@@ -1,0 +1,78 @@
+
+In this section, we introduce the basic definition of heterogeneous graphs with network dynamics and review the recent development on graph neural networks (GNNs) and their heterogeneous variants. 
+We also highlight the difference between \short \ and existing attempts on heterogeneous graph neural networks.
+
+
+\subsection{Heterogeneous Graph Mining}
+Heterogeneous graphs~\cite{Sun:BOOK2012} (a.k.a., heterogeneous information networks) are an important abstraction for modeling relational data for many real-world complex systems. Formally, it is defined as:
+\theoremstyle{definition}
+\begin{defn}{\textbf{Heterogeneous Graph:}}
+A heterogeneous graph is defined as a directed graph $G = (\cV, \cE, \cA, \cR)$ where each node $v \in \cV$ and each edge $e \in \cE$ are associated with their type mapping functions $\tau(v): V \rightarrow \cA$ and $\phi(e): E \rightarrow \cR$, respectively. 
+\end{defn}
+
+\vpara{Meta Relation.}For an edge $e=(s, t)$ linked from source node $s$ to target node $t$, its {meta relation} is denoted as $\langle \tau(s), \phi(e), \tau(t) \rangle$. Naturally, $\phi(e)^{-1}$ represents the inverse of $\phi(e)$. The classical meta path paradigm~\cite{Sun:VLDB11,DBLP:conf/kdd/SunNHYYY12, Sun:BOOK2012} is defined as a sequence of such meta relation.
+
+Notice that, to better model real-world heterogeneous networks, we assume that there may exist multiple types of relations between different types of nodes. 
+%Take the Open Academic Graph as an example, there are six types of nodes \textit{paper, author, institute, journal, conference} and \textit{topic/field}, and various types of relations between them. 
+For example, in OAG there are different types of relations between the \textit{author} and \textit{paper} nodes by considering the authorship order, i.e., ``the first author of'', ``the second author of'', and so on.
+
+
+\vpara{Dynamic Heterogeneous Graph.}To model the dynamic nature of real-world (heterogeneous) graphs, we assign an edge $e=(s, t)$  a timestamp $T$, when node $s$ connects to node $t$ at $T$. 
+If $s$ appears for the first time, $T$ is also assigned to $s$. 
+$s$ can be associated with multiple timestamps if it builds connections over time. 
+
+In other words, we assume that the timestamp of an edge is unchanged, denoting the time it is created. For example, when a paper published on a conference at time $T$, $T$ will be assigned to the edge between the paper and conference nodes. 
+On the contrary, different timestamps can be assigned to a node accordingly. 
+For example, the \textit{conference} node ``WWW'' can be assigned any year. $WWW@1994$ means that we are considering the first edition of WWW, which focuses more on internet protocol and Web infrastructure, while $WWW@2020$ means the upcoming WWW, which expands its research topics to social analysis, ubiquitous computing, search \& IR, privacy and society, etc. 
+
+%\yd{test}while $WWW@2020$ means the upcoming WWW, which expands its research topics to social analysis, ubiquitous computing, search \& IR, privacy and society, etc. 
+There have been significant lines of research on mining heterogenous graphs, such as node classification, clustering, ranking and representation learning~\cite{Sun:BOOK2012,Sun:VLDB11,DBLP:conf/kdd/SunNHYYY12,dong2017metapath2vec}, while the dynamic perspective of HGs has not been extensively explored and studied. 
+% There exist many research works to analyze HG graphs. \zn{TODO}
+
+
+\subsection{Graph Neural Networks}
+Recent years have witnessed the success of graph neural networks for relational data~\cite{gcn,gat,graphsage}. 
+Generally, a GNN can be regarded as using the input graph structure as the computation graph for message passing~\cite{DBLP:conf/icml/GilmerSRVD17}, during which the local neighborhood information is aggregated to get a more contextual representation. Formally, it has the following form:
+\begin{defn}{\textbf{General GNN Framework:}}
+Suppose $H^{l}[t]$ is the node representation of node $t$ at the $(l)$-th GNN layer, the update procedure from the $(l$-$1)$-th layer to the $(l)$-th layer is:
+\begin{align}
+H^{l}[t] \gets \underset{\forall s \in N(t), \forall e \in E(s,t)}{\textbf{Aggregate}}\bigg(  \textbf{Extract}\Big(H^{l-1}[s]; H^{l-1}[t], e\Big)\bigg)
+\end{align}
+where $N(t)$ denotes all the source nodes of node $t$ and $E(s,t)$  denotes all the edges from node $s$ to $t$. 
+\end{defn}
+
+The most important GNN operators are Extract($\cdot$) and Aggregate($\cdot$). 
+Extract($\cdot$) represents the neighbor information extractor. 
+It extract useful information from source node's representation $H^{l-1}[s]$, with the target node's representation $H^{l-1}[t]$ and the edge $e$ between the two nodes as query. 
+%The most basic extractor is directly using $H^{l-1}[s]$ as output, which is what original GCN~\cite{gcn} conducts, but a more sophisticated operator can be considered to enrich model capacity. 
+Aggregate($\cdot$) gather the neighborhood information of souce nodes via some aggregation operators, such as \textit{mean, sum,} and \textit{max}, while more sophisticated pooling and normalization functions can be also designed.
+
+Various (homogeneous) GNN architectures have been proposed following this framework.  
+Kipf \textit{et al.}~\cite{gcn} propose graph convolutional network (GCN), which averages the one-hop neighbor of each node in the graph, followed by a linear projection and non-linear activation operations. 
+Hamilton  \textit{et al.} propose GraphSAGE that generalizes GCN's aggregation operation from \textit{average} to \textit{sum, max} and a \textit{RNN unit}. 
+Velickovi  \textit{et al.} propose graph attention network (GAT)~\cite{gat} by introducing the attention mechanism into GNNs, which allows GAT to assign different importance to nodes within the same neighborhood. 
+ %All these previous models are designed for homogeneous graphs, which doesn't contain various node or edge types. 
+
+
+\subsection{Heterogeneous GNNs}
+Recently, studies have attempted to extend GNNs for modeling heterogeneous graphs. 
+Schlichtkrull \textit{et al.}~\cite{DBLP:conf/esws/SchlichtkrullKB18} propose the relational graph convolutional networks (RGCN) to model knowledge graphs. 
+RGCN keeps a distinct linear projection weight for each edge type. 
+Zhang \textit{et al.}~\cite{DBLP:conf/kdd/ZhangSHSC19} present the heterogeneous graph neural networks (HetGNN) that adopts different RNNs for different node types to integrate multi-modal features. 
+Wang \textit{et al.}~\cite{DBLP:conf/www/WangJSWYCY19} extend graph attention networks by maintaining different weights for different meta-path-defined edges. They also use high-level semantic attention to differentiate and aggregate information from different meta paths.
+
+Though these methods have shown to be empirically better than the vanilla GCN and GAT models, they have not fully utilized the heterogeneous graphs' properties. All of them use either node type or edge type alone to determine GNN weight matrices. 
+However, the node or edge counts of different types can vary greatly. 
+For relations that don't have sufficient occurrences, it's hard to learn accurate relation-specific weights. To address this, we propose to consider parameter sharing for a better generalization. 
+Given an edge $e=(s,t)$  with its meta relation as $\langle \tau(s), \phi(e), \tau(t) \rangle$, if we use three interaction matrices to model the three corresponding elements $\tau(s), \phi(e)$, and $\tau(t)$ in the meta relation, then the majority of weights could be shared. 
+For example, in ``the first author of'' and ``the second author of'' relationships, their source and target node types are both \textit{author} to \textit{paper}, respectively. 
+In other words, the knowledge about \textit{author} and \textit{paper} learned from one relation could be quickly transferred and adapted to the other one. 
+Therefore, we integrate this idea with the powerful Transformer-like attention architecture, and propose \model. 
+
+To summarize, the key differences between \short\ and existing attempts include:
+\begin{enumerate}
+    \item Instead of attending on node or edge type alone, we use the meta relation $\langle \tau(s), \phi(e), \tau(t) \rangle$ to decompose the interaction and transform matrices, enabling \short\ to capture both the common and specific patterns of different relationships using equal or even fewer parameters.
+    \item Different from most of the existing works that are based on customized meta paths, we rely on the nature of the neural architecture to incorporate high-order heterogeneous neighbor information, which automatically learns the importance of implicit meta paths.  
+    \item Most previous works don't take the dynamic nature of (heterogeneous) graphs into consideration, while we propose the relative temporal encoding technique to incorporate temporal information by using limited computational resources.
+    \item None of the existing heterogeneous GNNs are designed for and experimented with Web-scale graphs, we therefore propose the heterogeneous Mini-Batch graph sampling algorithm designed for Web-scale graph training, enabling experiments on the billion-scale Open Academic Graph.
+\end{enumerate}

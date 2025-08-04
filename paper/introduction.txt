@@ -1,0 +1,156 @@
+
+
+Heterogeneous graphs have been commonly used for abstracting and modeling complex systems, in which objects of different types interact with each other in various ways. 
+Some prevalent instances of such systems include academic graphs, Facebook entity graph, LinkedIn economic graph, and broadly the Internet of Things network. 
+For example, the  Open Academic Graph (OAG)~\cite{DBLP:conf/kdd/ZhangLTDYZGWSLW19} in Figure \ref{fig:schema} contains five types of nodes: papers, authors, institutions, venues (journal, conference, or preprint), and fields, as well as different types of relationships between them. 
+%\YS{please be consistent with Fig. 1. E.g., Journal/Conference one type of two types? Fields wise, one for each level or one for all levels?}
+
+
+	%\hide{
+\begin{figure}[t!]
+    \centering
+    \includegraphics[width=0.48\textwidth, trim = 5 5 10 0, clip
+    ] 
+    {picture/intro-example3.png}
+    \caption{The schema and meta relations of Open Academic Graph (OAG). \textmd{Given a Web-scale heterogeneous graph, e.g., an academic network, \short\ takes only its one-hop edges as input without manually designing meta paths.}}
+    \label{fig:schema}
+\end{figure} 
+%}%end of hide
+
+Over the past decade, a significant line of research has been explored for mining heterogeneous graphs~\cite{Sun:BOOK2012}. 
+One of the classical paradigms is to define and use meta paths to model heterogeneous structures, such as PathSim~\cite{Sun:VLDB11} and metapath2vec~\cite{dong2017metapath2vec}. 
+Recently, in view of graph neural networks' (GNNs) success~\cite{gcn, graphsage, gat}, there are several attempts to adopt GNNs to learn with heterogeneous networks~\cite{DBLP:conf/esws/SchlichtkrullKB18,DBLP:conf/kdd/ZhangSHSC19,DBLP:conf/www/WangJSWYCY19,gt}. 
+However, these works face several issues: 
+First, most of them involve the design of meta paths  for each type of heterogeneous graphs, requiring specific domain knowledge; 
+Second, they either simply assume that different types of nodes/edges share the same feature and representation space or keep distinct non-sharing weights for either node type or edge type alone, making them insufficient to capture heterogeneous graphs' properties; 
+Third, most of them ignore the dynamic nature of every (heterogeneous) graph; 
+Finally, their intrinsic design and implementation make them incapable of modeling Web-scale heterogeneous graphs. 
+
+
+Take OAG for example: First, the nodes and edges in OAG could have different feature distributions, e.g., papers have text features whereas institutions may have features from affiliated scholars, and coauthorships obviously differ from citation links; 
+Second, OAG has been consistently evolving, e.g., 1) the volume of publications doubles every 12 years~\cite{dong2017century}, and 2) the KDD conference was more related to database in the 1990s whereas more to machine learning in recent years; 
+%Further, the academic graph datasets used in existing heterogeneous GNNs consider only three types of nodes (i.e., papers, authors, conferences) and three or four types of links, leaving their customized meta paths 
+% Further, existing works customize meta paths for academic datasets with only three types of nodes and less than four types of links, making them not even generalizable to graphs of the same type---OAG;  
+Finally, OAG contains hundreds of millions of nodes and billions of relationships, leaving existing heterogeneous GNNs not scalable for handling it.  
+
+
+In light of these limitations and challenges, we propose to study heterogeneous graph neural networks with the goal of maintaining node- and edge-type dependent representations, capturing network dynamics, avoiding customized meta paths, and being scalable to Web-scale graphs. 
+% The core idea is to adapt the self-attention mechanism used in Transformer~\cite{DBLP:conf/nips/VaswaniSPUJGKP17} into heterogeneous graphs, wherein two nodes on each edge can interact with each other and propagate information with type-dependent parameters. 
+% This heterogeneous attention process is able to model both the temporal and high-order structural information. 
+% Its design also facilitates billion-scale training for heterogeneous graphs. % with billions of nodes and relationships. 
+In this work, we present the \model\ (\short) architecture to deal with all these issues. 
+%\short\ comprises four components: relative temporal encoding, heterogeneous mutual attention, heterogeneous message passing, and target-specific aggregation. 
+
+% temporal
+
+
+% heterogeneity
+To handle graph heterogeneity, we introduce the node- and edge-type dependent attention mechanism.
+Instead of parameterizing each type of edges, the heterogeneous mutual attention in \short\ is defined by breaking down each edge $e=(s,t)$ based on its meta relation triplet, i.e., $\langle$ node type of $s$, edge type of $e$ between $s$ \& $t$, node type of $t \rangle$. Figure \ref{fig:schema} illustrates the meta relations of heterogeneous academic graphs. 
+In specific, we use these meta relations to parameterize the weight matrices for calculating attention over each edge.
+As a result, nodes and edges of different types are allowed to maintain their specific representation spaces.
+Meanwhile, connected nodes in different types can still interact, pass, and aggregate messages without being restricted by their distribution gaps.
+Due to the nature of its architecture, \short\ can incorporate information from high-order neighbors of different types through message passing across layers, which can be regarded as ``soft'' meta paths. 
+That said, even if \short\ take only its one-hop edges as input without manually designing meta paths, the proposed attention mechanism can automatically and implicitly learn and extract ``meta paths'' that are important for different downstream tasks. 
+
+
+To handle graph dynamics, we enhance \short\ by proposing the relative temporal encoding (RTE) strategy. 
+Instead of slicing the input graph into different timestamps, we propose to maintain all the edges happening in different times as a whole, and design the RTE strategy to model structural temporal dependencies with any duration length, and even with unseen and future timestamps. 
+By end-to-end training, RTE enables \short\ to automatically learn the temporal dependency and evolution of heterogeneous graphs. 
+
+
+To handle Web-scale graph data, we design the first heterogeneous sub-graph sampling algorithm---\sampling---for mini-batch GNN training. 
+Its main idea is to sample heterogeneous sub-graphs in which different types of nodes are with similar proportions, since the direct usage of existing (homogeneous) GNN sampling methods, such as GraphSage~\cite{graphsage}, FastGCN~\cite{fastgcn}, and LADIES~\cite{ladies}, results in highly imbalanced ones regarding to both node and edge types. 
+In addition, it is also designed to keep the sampled sub-graphs dense for minimizing the loss of information. 
+With \sampling, all the GNN models, including our proposed \short, can train and infer on arbitrary-size heterogeneous graphs. 
+% \yd{to make the sampling referring consistent}
+
+We demonstrate the effectiveness and efficiency of the proposed \model\ on the Web-scale Open Academic Graph comprised of 179 million nodes and 2 billion edges spanning from 1900 to 2019, making this the largest-scale
+and longest-spanning representation learning yet performed on heterogeneous graphs. 
+Additionally, we also examine it on domain-specific graphs: the computer science and medicine academic graphs. 
+Experimental results suggest that \short\ can significantly improve various downstream tasks over state-of-the-art GNNs as well as dedicated heterogeneous models by 9--21$\%$. 
+We further conduct case studies to show the proposed method can indeed  automatically capture the importance of implicit meta paths for different tasks. 
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\begin{comment}
+\yd{To Ziniu:  1 how it differs from and better than HAN/RGCN; 2; why better than meta-path based method; 3 why three matrices are better than one}
+\zn{(1) For heterogeneity, they keep different parameters for each <node, edge, node> pair. However, the number of different relation can vary greatly. For some rare relation, it's not sufficient to update the parameters. On the other hand, there exist some similarity between different relationship. For example, for the first-author link and last-author link obviously share some common pattern. Therefore, is both necessary and possible to decompose the pairwise weights and have parameter sharing. In view of this, we propose to model the interaction by three matrix, source node weight, edge weight, target node weight. The edge weight is relatively smaller compare to node weights. Thus, we can capture both the common and specific patterns of different relationships, using less or equal memory consumption; Also, using three matrices to define interaction and message passing is more natural with heterogeneous graph structure. We use target node's corresponding type matrix to calculate key, use source node's type matrix to calculate query, and edge type matrix serves as an interaction component. Such model better fits the graph structure. For time, these two methods don't capture temporal dependency. 
+% HetGNN adopts weights (LSTM) for each node type, which is too coarse to model the heterogeneous relationship. 
+(2) GNN approaches by its natural can incorporate high-order neighbor information. As long as we can keep the node and edge property, the meta-path information has already been included in through the message passing, and the attention mechanism can even automatically learn the important path for each tasks, without the requirement to explicit defining it.
+(3) [1] Weight sharing. Through decomposition, edge weight is smaller than node weight, and thus even some rare edge can be updated fast and robustly. [2] The original transformer already differentiate the Key matrix, Query matrix and Value matrix. Obviously we cannot keep a brand new matrix for each triplet pair. Such decomposition can also been seen as a trade-off between performance and memory.
+}
+
+
+% Importance of analyzing web-scale hetergeneous and dynamic graphs
+Many real-world systems can be modelled as interconnected graphs with multiple node and link types. For example, in a healthcare graph, nodes can be categorized into patients, doctors, diseases, medicines, hospitals, etc. Such kind of graph, known as Heterogeneous Graph has attracted many research interests in recent years. 
+
+
+% Introduce GNN, why previous GNN cannot easily adapt to HG, and the limitation of recently proposed methods (mainly augmented meta-path links)
+Recently, researchers have adopted deep learning into graph domain and proposed various Graph Neural Network architectures (GNNs)~\cite{gcn, graphsage, DBLP:conf/iclr/VelickovicCCRLB18}. to achieve competitive performance in various graph-based applications, such as semi-supervised node classification~\cite{gcn}, recommendation systems~\cite{DBLP:conf/kdd/YingHCEHL18} and knowledge graphs~\cite{DBLP:conf/esws/SchlichtkrullKB18}.
+Seeing the success of GNN for modelling graph in various domains, one natural idea is that whether we can adopt it to model heterogeneous graphs. However, most existing GNN base on the assumption that nodes in the graphs are within same distribution, so that all node pairs can interact with same procedure, while the key property of heterogeneous graphs is that different type of nodes can have totally different semantic meaning, and thus the way to represent them should be different. For example, to represent a patient, we may focus on his/her personal health profile, which is normally a table data, while text description can be significant to represent a medicine. These representations are always not in same space, not necessarily have same dimension, and not generated from same model. In addition, different type of links also have different meaning. For example, the doctor-patient link is obviously different from medicine-disease link. The different semantic meaning of node type and link type hinder the direct usage of GNN into heterogeneous graphs. Although there are several works try to use GNN to model heterogeneous graphs, they simply assume that different nodes have same feature space and within same distribution, which doesn't fully utilize the rich semantic of the heterogeneity. 
+
+Moreover, real-world graphs can be dynamic, with new nodes and edges adding or removing. Considering the dynamic of graphs, even a same node will have different semantic meaning in different timestamp. For example, WWW held in 1994 concentrates on the Internet architecture and protocol, while the same conference in 2019 also focus on other interesting topics as graph mining and social science. Therefore, to accurately model real-world graphs, the designed GNNs should also have the capacity to maintain temporal information and dependency.
+
+
+% (1) Model Architecture (heterogeneity + Dynamic)
+In view of the above demands, a desired GNN model should consider both heterogeneity and dynamic of real-world graphs. Therefore, in this paper, we propose a novel GNN architecture, Heterogeneous Graph Transformer (HGT), for modeling web-scale heterogeneous and dynamic graphs. The basic architecture is built based on adopting the transformer into heterogeneous graph, where two connected nodes can interact and propagate information with carefully decoupled weights, so that the model can learn to capture graph patterns for both heterogeneity and dynamic.
+
+% heterogeneity
+For graph heterogeneity, We use the meta relation triplet of graph schema to define interaction and transform matrices, so that the model can capture both the common and specific patterns of different relationships using equal or even smaller parameters. In this way, the nodes in different types are allowed to maintain in their specific representation distribution, while connected nodes in different types can still interact and transform messages without being restricted by distribution gap.
+
+
+For the graph dynamic without losing structure information, we first define a dynamic timestamp schema, under which the graph reserves all the edges happening in different times. Then we propose a relative temporal encoding to incorporate temporal information into HGT using limited computational resources. By end-to-end training, the model can automatically learn the temporal dependency and differences, 
+
+
+
+% (2) Sampling (web-scale + assign timestamp)
+In addition to the model architecture, training GNN for large-scale graph is also a significant challenge. The vanilla GCN has to calculate all the node representation in the graph, which is infeasible for web-scale graph data. To alleviate with it, researchers have proposed different sampling methods to conduct mini-batch training~\cite{graphsage,fastgcn,DBLP:conf/icml/ChenZS18,ladies}. However, all these sampling methods are designed for homogeneous graphs, and there has not been any work to conduct large-scale training for heterogeneous graphs. We therefore design a heterogeneous layer-dependent sub-graph sampling algorithm, with which the model can train on arbitrary large graphs and can achieve good performance. 
+
+
+% (3) Evaluation
+
+
+
+\end{comment}

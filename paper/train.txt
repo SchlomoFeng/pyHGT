@@ -1,0 +1,295 @@
+
+
+ \begin{figure*}[ht!]
+    \centering
+    \includegraphics[width=1.0\textwidth]{picture/sample.png}
+    \caption{\sampling\ with Inductive Timestamp Assignment.}
+    \label{fig:sample}
+\end{figure*} 
+
+
+In this section, we present \short's strategies for training Web-scale heterogeneous graphs with dynamic information, including an efficient Heterogeneous Mini-Batch Graph Sampling algorithm---\sampling---and an inductive timestamp assignment method. % for keeping heterogeneous graphs' temporal information. 
+
+\subsection{\sampling}
+
+The full-batch GNN~\cite{gcn} training requires the calculation of all node representations per layer, 
+%As a result, it is prohibitively expensive in terms of both computation and space, 
+making it not scalable for Web-scale graphs. 
+To address this issue, different sampling-based methods~\cite{graphsage,fastgcn,DBLP:conf/icml/ChenZS18,ladies} have been proposed to train GNNs on a subset of nodes. 
+However, directly using them for heterogeneous graphs is prone to get sub-graphs that are extremely imbalanced regarding different node types, due to that the degree distribution and the total number of nodes for each type can vary dramatically. 
+
+To address this issue, we propose an efficient Heterogeneous Mini-Batch Graph Sampling algorithm---\sampling---to enable both \short\ and traditional GNNs to handle Web-scale heterogeneous graphs. 
+\sampling\ is able to 1) keep a similar number of nodes and edges for each type and 2) keep the sampled sub-graph dense to minimize the information loss and reduce the sample variance. 
+
+
+Algorithm \ref{alg:sample} outlines the \sampling\ algorithm. 
+Its basic idea is to keep a separate node budget $B[\tau]$ for each node type $\tau$ and to sample an equal number of nodes per type with an importance sampling strategy to reduce variance. 
+Given node $t$ already sampled, we add all its direct neighbors into the corresponding budget with Algorithm~\ref{alg:budget}, and add $t$'s normalized degree to these neighbors in line~\ref{line:update}, which will then be used to calculate the sampling probability. 
+Such normalization is equivalent to accumulate the random walk probability of each sampled node to its neighborhood, avoiding the sampling being dominated by high-degree nodes. 
+Intuitively, the higher such value is, the more a candidate node is correlated with the currently sampled nodes, and thus should be given a higher probability to be sampled.
+
+After the budget is updated, we then calculate the sampling probability in Algorithm~\ref{alg:sample} line~\ref{line:prob}, where we calculate the square of the cumulative normalized degree of each node $s$ in each budget. 
+As proved in~\cite{ladies}, using such sampling probability can reduce the sampling variance. Then, we sample $n$ nodes in  type $\tau$ by using the calculated probability, add them into the output node set, update its neighborhood to the budget, and remove it out of the budget in lines~\ref{line:samp}--\ref{line:end}. 
+Repeating such procedure for $L$ times, we get a sampled sub-graph with $L$ depth from the initial nodes. Finally, we reconstruct the adjacency matrix among the sampled nodes. 
+By using the above algorithm, the sampled sub-graph contains a similar number of nodes per  type (based on the separate node budget), and is sufficiently dense to reduce the sampling variance (based on the normalized degree and importance sampling), making it suitable for training GNNs on Web-scale heterogeneous graphs.
+
+
+\begin{algorithm}[tb] 
+\caption{Heterogeneous Mini-Batch Graph Sampling} 
+\label{alg:sample} 
+\begin{algorithmic}[1] 
+\REQUIRE
+Adjacency matrix $A$ for each $\langle \tau(s), \phi(e), \tau(t) \rangle$ relation pair; Output node Set $OS$; Sample number $n$ per node type; Sample depth $L$.\\
+\ENSURE
+Sampled node set $NS$; Sampled adjacency matrix $\hat{A}$.
+\STATE  $NS \gets OS$ // Initialize sampled node set as output node set.
+\STATE  Initialize an empty Budget $B$ storing nodes for each node type with normalized degree. 
+\FOR {$t \in NS$}
+    \STATE  Add-In-Budget($B$, $t$, $A$, $NS$) // Add neighbors of $t$ to $B$.
+\ENDFOR
+\FOR {$l \gets 1$ to $L$}
+    \FOR {source node type $\tau \in B$}
+        \FOR {source node $s \in B[\tau]$}
+            \STATE  $\ prob^{(l-1)}[\tau][s] \gets \frac{B[\tau][s]^2}{\|B[\tau]\|_2^2}$ // Calculate sampling probability for each source node $s$ of node type $\tau$. \label{line:prob}
+        \ENDFOR
+        \STATE  Sample $n$ nodes ${\{t_i\}}_{i=1}^n$ from $B[\tau]$ using $prob^{(l-1)}[\tau]$.
+        \FOR {$t \in {\{t_i\}}_{i=1}^n$} \label{line:samp}
+            \STATE  $OS[\tau].add(t)$ // Add node $t$ into Output node set.
+            \STATE  Add-In-Budget($B$, $t$, $A$, $NS$) // Add neighbors of $t$ to $B$.
+            \STATE  $B[\tau].pop(t)$ // Remove sampled node $t$ from Budget. \label{line:end}
+        \ENDFOR
+    \ENDFOR
+\ENDFOR
+\STATE  Reconstruct the sampled adjacency matrix $\hat{A}$ among the sampled nodes $OS$ from $A$.
+\RETURN $OS$ and $\hat{A}$; 
+\end{algorithmic} 
+\end{algorithm}
+
+
+
+\begin{algorithm}[tb] 
+\caption{Add-In-Budget} 
+\label{alg:budget} 
+\begin{algorithmic}[1] 
+\REQUIRE
+Budget $B$ storing nodes for each type with normalized degree; Added node $t$; Adjacency matrix $A$ for each $\langle \tau(s), \phi(e), \tau(t) \rangle$ relation pair; Sampled node set $NS$.\\
+\ENSURE
+Updated Budget $B$.
+%\FOR {source node type $\tau \in A$}
+%    \FOR {relation edge type $\phi \in A[\tau]$}
+     \FOR {each possible source node type $\tau$ and edge type $\phi$}
+        %\STATE  $\hat{D}_t \gets 1 \ /\ len\Big(A[\tau][\phi][\tau(t)][t]\Big)$ // get normalized degree of added node $t$ regarding to $\langle \tau, \phi, \tau(t) \rangle$.
+        \STATE  $\hat{D}_t \gets 1 \ /\ len\Big(A_{\langle \tau, \phi, \tau(t) \rangle}[t]\Big)$ // get normalized degree of added node $t$ regarding to $\langle \tau, \phi, \tau(t) \rangle$.
+        \FOR {source node $s$ in $A_{\langle \tau, \phi, \tau(t) \rangle}[t]$}
+            \IF {$s$ has not been sampled ($s \not\in NS$)} \label{line:check}
+                 \IF {$s$ has no timestamp}
+                     \STATE  $s.time = t.time$ // Inductively inherit timestamp. \label{line:time}
+                 \ENDIF
+                \STATE  $B[\tau][s] \gets B[\tau][s] + \hat{D}_t$\ \ \ // Add candidate node $s$ to budget $B$ with target node $t$'s normalized degree. \label{line:update}
+            \ENDIF
+        \ENDFOR  
+    \ENDFOR
+%\ENDFOR
+\RETURN Updated Budget $B$
+\end{algorithmic} 
+\end{algorithm}
+
+
+
+ 
+
+\subsection{ Inductive Timestamp Assignment}
+
+%\textit{plain nodes.} 
+Till now we have assumed that each node $t$ is assigned with a timestamp $T(t)$. However, in real-world heterogeneous graphs, many nodes are not associated with a fixed time. Therefore, we need to assign different timestamps to it. We denote these nodes as {plain nodes}. For example, the WWW conference is held in both 1974 and 2019, and the WWW node in these two years has dramatically different research topics. Consequently, we need to decide which timestamp(s) to attach to the WWW node. 
+
+%\textit{Event nodes.} 
+There also exist {event nodes} in heterogeneous graphs that have an explicit timestamp associated with them. 
+For example, the paper node should be associated with its publication behavior and therefore attached to its publication date. 
+
+We propose an inductive timestamp assignment algorithm to assign plain nodes timestamps based on event nodes that they are linked with. 
+The algorithm is shown in Algorithm~\ref{alg:budget} line~\ref{line:time}. 
+The  idea is that plan nodes inherit the timestamps from event nodes. 
+We examine whether the candidate source node is an event node. If yes, like a paper published at a specific year, we keep its timestamp for capturing temporal dependency. 
+If no, like a conference that can be associated with any timestamp, we inductively assign the associated node's timestamp, such as the published year of its paper, to this plain node. In this way, we can adaptively assign timestamps during the sub-graph sampling procedure.
+%For example, for a paper published in 2010, we should use the year 2010 as its timestamp. 
+%Then, when we consider its published venue, say WWW, it is reasonable to assign this paper's publication year 2010 to it in order to calculate WWW@2010's representation and then pass it to the paper node. 
+
+% During \sampling, we can have multiple event nodes linked to one plain node, such as multiple papers published at WWW at different times. In this case, we treat the same node with different timestamps distinctly, which means that in Algorithm~\ref{alg:budget} line~\ref{line:check} we also use the associated timestamp as a judgment indicator. 
+% In this way, WWW@1974 and WWW@2019 can both occur in the sampled subgraph, linking to the same neighborhoods. With relative temporal encoding, the \short\ model should learn to attend differently for these two WWW nodes towards all the papers published on it in different years. 
+ 
+
+%An example of sampling a heterogeneous mini-batch academic graph as well as assigning timestamps is also illustrated in Figure~\ref{fig:sample}. We start from a graph with Paper \textit{P1} as the initial node. 
+%At each Step we update the budget by exploring the immediate neighbors of newly added nodes and then sample $n$ ($n$=1) nodes for each budget. 
+%During this process, we inductively assign timestamps from target nodes to the plain source nodes, if the source nodes don’t have fixed timestamps themselves (e.g., papers assign publication dates to venues). 
+%In this way, we can sample a dense sub-graph with a balanced number of nodes for each type and inductively assigned timestamps, which can be used to conduct efficient training for large-scale graphs.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\hide{
+
+In this section, we discuss how we train the proposed relational graph transformer for web-scale graphs. We firstly describe an efficient sub-graph sampling mechanism, which is designed explicitly for large-scale heterogeneous graph, and can get an informative subgraph for calculating accurate representation. Then we describe how we assign timestamps inductively for keeping temporal information.
+
+\subsection{Graph Sampling for Heterogeneous Graph}
+
+one major challenge of training deep GNN for large-scale graphs remains a big challenge. Original full-batch GNN~\cite{gcn} training requires calculating the representation of all the nodes in the graph per GNN layer, which brings in high computation and memory costs. To alleviate this issue, several sampling-based methods~\cite{graphsage, fastgcn, ladies} have been proposed to train GNNs on a subset of nodes. However, in heterogeneous graphs, nodes an edges within different types cannot be treated equally, as the number and degree distribution of nodes in different types can be significantly different. For example, the number of venue nodes is far less than the number of paper nodes. Therefore, directly using these sampling algorithms to heterogeneous graphs are prone to get sub-graphs that are extremely imbalanced regarding node and edge types. Obviously, such imbalanced sub-graphs are not appropriate to train GNNs. Therefore, we should design a new sampling algorithm specifically for such heterogeneous graphs.
+
+
+Based on the previous discussion, a promising sampling algorithm for heterogeneous graphs should: (1) Keep a similar number of nodes and edges for each type; (2) Keep the sampled graph dense, to minimize information loss and reduce sample variance. Following these two requirements, we design a mini-batch Heterogeneous Graph Sampling algorithm. The basic idea is that we keep a separate node budget $B[ST]$ for each node type $ST$, and sample an equal number of nodes per type. Given a set of nodes already sampled, we add all their direct neighbors into the corresponding budget with Algorithm~\ref{alg:budget}, and calculate their normalized degree in line~\ref{line:update}, which will then be used to calculate sampling probability. Such normalization is equivalent to accumulate the random walk probability of each sampled node to its neighborhood, which can avoid the sampling being dominated by high-degree nodes. After the budget is updated, we then calculate the sampling probability in Algorithm~\ref{alg:sample} line~\ref{line:prob}, where we calculate the square of normalized degree for each budget. As is proved in~\cite{fastgcn, ladies}, using such sampling probability can reduce the sampled variance. We sample $n$ nodes in node type $ST$ using the calculated probability, add each node into output set, update its neighborhood to the budget and remove it out of budget in line~\ref{line:samp}-\ref{line:end}. Repeating such procedure for $L$ times, and we get a sampled sub-graph with $L-$th depth from initial nodes. Finally, we reconstruct the adjacency matrix among the sampled nodes and return both as the mini-batch sub-graph. Using the above sampling algorithm, the sampled sub-graph contains an equal number of nodes per node type (based on the separate node budget), and sufficiently dense to reduce sampling variance (based on the normalized degree and importance sampling), and thus is suitable for training GNNs on web-scale heterogeneous graphs.
+
+\begin{algorithm}[tb] 
+\caption{Mini-Batch Heterogeneous Graph Sampling} 
+\label{alg:sample} 
+\begin{algorithmic}[1] 
+\REQUIRE
+Adjacency Matrix $A$ for each $\langle \tau(s), \phi(e), \tau(t) \rangle$ relation pair; Output node Set $OS$; Sample Number $n$ per node type; Sample Depth $L$\\
+\ENSURE
+Sampled Node Set $NS$; Sampled adjacency matrix $\hat{A}$.
+\STATE  $NS \gets OS$ // Initialize Sampled Node Set as Output Node Set.
+\STATE  Initialize an empty Budget $B$ storing nodes for each node type with normalized degree. 
+\FOR {$t \in NS$}
+    \STATE  Add-In-Budget($B$, $t$, $A$, $NS$) // Add neighbors of $t$ to $B$.
+\ENDFOR
+\FOR {$l \gets 1$ to $L$}
+    \FOR {Source Node Type $ST \in B$}
+        \STATE  $\ prob^{(l-1)}[ST][s] \gets \frac{B[ST][s]^2}{\|B[ST]\|_2^2}$ // Calculate sampling probability for each source node $s$ within node type $ST$. \label{line:prob}
+        \FOR {Repeat $n$ times} \label{line:samp}
+            \STATE  Sample node $t$ from $B[ST]$ using $prob^{(l-1)}[ST]$.
+            \STATE  $OS[ST].add(t)$ // Add node $t$ into Output Node Set.
+            \STATE  Add-In-Budget($B$, $t$, $A$, $NS$) // Add neighbors of $t$ to $B$.
+            \STATE  $B[ST].pop(t)$ // Remove sampled node $t$ from budget. \label{line:end}
+        \ENDFOR
+    \ENDFOR
+\ENDFOR
+\STATE  Reconstruct the sampled adjacency matrix $\hat{A}$ among the sampled node $OS$ from $A$.
+\RETURN $OS$ and $\hat{A}$; 
+\end{algorithmic} 
+\end{algorithm}
+
+
+ 
+
+
+\begin{algorithm}[tb] 
+\caption{Add-In-Budget} 
+\label{alg:budget} 
+\begin{algorithmic}[1] 
+\REQUIRE
+Budget $B$ storing nodes for each type with normalized degree; Added node $t$; Adjacency matrix $A$ for each $\langle \tau(s), \phi(e), \tau(t) \rangle$ relation pair; Sampled node set $NS$.\\
+\ENSURE
+Updated Budget $B$.
+%\FOR {source node type $\tau \in A$}
+%    \FOR {relation edge type $\phi \in A[\tau]$}
+     \FOR {each possible source node type $\tau$ and edge type $\phi$}
+        %\STATE  $\hat{D}_t \gets 1 \ /\ len\Big(A[\tau][\phi][\tau(t)][t]\Big)$ // get normalized degree of added node $t$ regarding to $\langle \tau, \phi, \tau(t) \rangle$.
+        \STATE  $\hat{D}_t \gets 1 \ /\ len\Big(A_{\langle \tau, \phi, \tau(t) \rangle}[t]\Big)$ // get normalized degree of added node $t$ regarding to $\langle \tau, \phi, \tau(t) \rangle$.
+        \FOR {source node $s$ in $A_{\langle \tau, \phi, \tau(t) \rangle}[t]$}
+            \IF {$s$ has not been sampled ($s \not\in NS$)} \label{line:check}
+                 \IF {$s$ has no timestamp}
+                     \STATE  $s.time = t.time$ // Inductively inherit timestamp. \label{line:time}
+                 \ENDIF
+                \STATE  $B[\tau][s] \gets B[\tau][s] + \hat{D}_t$\ \ \ // Add candidate node $s$ to budget $B$ with target node $t$'s normalized degree. \label{line:update}
+            \ENDIF
+        \ENDFOR  
+    \ENDFOR
+%\ENDFOR
+\RETURN Updated Budget $B$
+\end{algorithmic} 
+\end{algorithm}
+
+
+ 
+
+
+\subsection{Inductive Timestamp Assignment}
+Till now we've assumed that each node $t$ is assigned with a timestamp $T(t)$. However, in real-world heterogeneous graphs, many nodes are not associated with a fixed time. Instead, we can assign different timestamps to it. We denote these nodes as `plain' nodes. For example, the WWW conference is held in both 1974 and 2019, and the same WWW in these two years has a dramatically different research topic. Therefore, we should decide which timestamp to attach to this WWW node. 
+
+Note that there also exist some `event' nodes that have explicit time meaning associated with it. For example, the paper node should be associated with its publication behavior and attached to its publication date. We thus propose an inductive timestamp assignment algorithm that gives `plain' nodes based on the `event' nodes it's associated with. For example, papers are `event' nodes. When we consider a paper node published in 2010, we should use 2010 as its timestamp. Also, when we consider its published venue, say WWW, it's reasonable to also use the publication year 2010 as its timestamp to calculate representation and then pass it to this paper node. Moreover, when we consider the representation of WWW@2010, we use all the papers published in WWW as its neighbors, each associated with their published time. Therefore, the relative temporal encoding used in RGT can capture the temporal dependency of this WWW@2010 node with papers at different times. Thus, we propose an inductive timestamp assignment algorithm, which is shown in Algorithm~\ref{alg:budget} line~\ref{line:time}. The basic idea is that we inherit the timestamp from `event' nodes that have fixed timestamp to `plain' nodes that can be associated with any time. We judge whether the candidate source node is an `event' node. If yes, like a paper published at a specific year, we keep its timestamp for capturing temporal dependency. If no, like a conference that can be associated with any timestamp, we inductively assign the target node's timestamp, such as the published year of a paper, to this `plain' node. In this way, we can adaptively assign timestamps during the sub-graph sampling procedure.
+
+
+Noted that during the sampling, we can have multiple `event' nodes linked to the same `plain' node. For example, multiple papers published at different times, but both on WWW. In this case, we treat the same node with different timestamps as different, which means that in Algorithm~\ref{alg:budget} line~\ref{line:check}, we also use the associated timestamp as a judgment indicator. In this way, WWW@1974 and WWW@2019 can both occur in our sampled subgraph, linked to the same neighborhoods. However, due to the existence of relative temporal encoding, the RGT model should learn to attend differently for these two WWW nodes towards all the papers published on it in different years. 
+
+
+}%end of hide
+
+% \begin{figure}
+%     \centering
+%     \includegraphics[width=0.45\textwidth]{picture/degree.pdf}
+%     \caption{Degree distribution for nodes in different types}
+%     \label{fig:degree}
+% \end{figure}

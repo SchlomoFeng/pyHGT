@@ -1,0 +1,503 @@
+\hide{
+
+\begin{table}[!tp]
+\centering
+\small
+\begin{tabular}{ccc} 
+\toprule
+Source & Target & Edge Relation Type \\
+\midrule
+\multirow{4}{*}{Paper} & Paper & $\{$Self, Cite, Cite$^{-1}\}$\\
+~& Author & $\{$Write$_\text{first}^{-1}$, Write$_\text{last}^{-1}$, Write$_\text{other}^{-1}\}$\\
+~& Field & $\{$In$_{L0}$, In$_{L1}$, In$_{L2}$, In$_{L3}$, In$_{L4}$, In$_{L5}\}$\\
+~& Venue & $\{$Pub$_{\text{conf}}$, Pub$_{\text{journal}}$, Pub$_{\text{preprint}}\}$\\
+\midrule
+\multirow{5}{*}{Author} & Author & $\{$Self, CoAuthor$\}$\\
+~& Paper & $\{$Write$_{\text{first}}$, Write$_{\text{last}}$, Write$_{\text{other}}\}$\\
+~& Field & $\{$In$_{L0}$, In$_{L1}$, In$_{L2}$, In$_{L3}$, In$_{L4}$, In$_{L5}\}$\\
+~& Venue & $\{$Pub$_{\text{conf}}$, Pub$_{\text{journal}}$, Pub$_{\text{preprint}}\}$\\
+~& Institute & $\{$Affiliate$\}$\\
+\midrule
+\multirow{3}{*}{Field} & Field & $\{$Self, Within, Within$^{-1}\}$\\
+~& Paper & $\{$In$_{L0}^{-1}$, In$_{L1}^{-1}$, In$_{L2}^{-1}$, In$_{L3}^{-1}$, In$_{L4}^{-1}$, In$_{L5}^{-1}\}$\\
+~& Author & $\{$In$_{L0}^{-1}$, In$_{L1}^{-1}$, In$_{L2}^{-1}$, In$_{L3}^{-1}$, In$_{L4}^{-1}$, In$_{L5}^{-1}\}$\\
+\midrule
+\multirow{3}{*}{Venue} & Venue & $\{$Self$\}$\\
+~& Paper & $\{$Pub$_{\text{conf}}^{-1}$, Pub$_{\text{journal}}^{-1}$, Pub$_{\text{preprint}}^{-1}\}$\\
+~& Author & $\{$Pub$_{\text{conf}}^{-1}$, Pub$_{\text{journal}}^{-1}$, Pub$_{\text{preprint}}^{-1}\}$\\
+\midrule
+\multirow{2}{*}{Institute} & Institute & $\{$Self, CoAuthor$\}$\\
+~& Author & $\{$Affiliate$^{-1}\}$\\
+\bottomrule
+\end{tabular}
+\caption{Open Academic Graph (OAG) Schema.} 
+\label{tab:schema} 
+\end{table}
+
+}%end of hide
+
+
+
+\begin{table*}[th]
+\centering
+\footnotesize
+\begin{tabular}{c|rr|rrrrr|rrrrr} 
+\toprule
+Dataset & $\#$nodes & $\#$edges & $\#$papers & $\#$authors & $\#$fields & $\#$venues & $\#$institutes & $\#$P-A & $\#$P-F & $\#$P-V & $\#$A-I & $\#$P-P \\ 
+\midrule
+CS & 11,732,027 & 107,263,811 & 5,597,605 & 5,985,759 &  119,537&  27,433 & 16,931   & 15,571,614 & 47,462,559 & 5,597,606 & 7,190,480 & 31,441,552\\ 
+\midrule
+Med & 51,044,324 & 451,468,375 & 21,931,587 & 28,779,507&  289,930 &  25,044&  18,256  &85,620,479 & 149,728,483&21,931,588 & 28,779,507& 165,408,318\\ 
+\midrule
+OAG & 178,663,927 & 2,236,196,802  & 89,606,257 & 88,364,081 &  615,228&  53,073&  25,288 & 300,853,688&  657,049,405&  89,606,258&  167,449,933 & 1,021,237,518\\
+\bottomrule
+\end{tabular}
+\caption{Open Academic Graph (OAG) Statistics.} 
+\label{tab:stat} 
+\end{table*}
+
+
+
+
+
+
+
+
+In this section, we evaluate the proposed \model\ on three heterogeneous academic graph datasets. 
+We conduct the Paper-Field prediction, Paper-Venue prediction, and Author Disambiguation tasks. 
+We also take case studies to demonstrate how \short\ can automatically learn and extract meta paths that are important for downstream tasks\footnote{The dataset and code are publicly available at \url{https://github.com/acbull/pyHGT}.}. 
+
+
+\subsection{Web-Scale Datasets}
+
+To examine the performance of the proposed model and its real-world applications, we use the Open Academic Graph (OAG)~\cite{DBLP:conf/www/SinhaSSMEHW15,tang2008arnetminer,DBLP:conf/kdd/ZhangLTDYZGWSLW19} as our experimental basis. 
+OAG consists of more than 178 million nodes and 2.236 billion edges---the largest publicly available heterogeneous academic dataset. 
+In addition, all papers in OAG are associated with their publication dates, spanning from 1900 to 2019. 
+
+To test the generalization of the proposed model, we also construct two domain-specific subgraphs from OAG: the Computer Science (CS) and Medicine (Med) academic graphs. 
+The graph statistics are listed in Table \ref{tab:stat}, in which P--A, P--F, P--V, A--I, and P--P denote the edges between paper and author, paper and field, paper and venue, author and institute, and the citation links between two papers. 
+
+
+Both the CS and Med graphs contain tens of millions of nodes and hundreds of millions of edges, making them at least one magnitude larger than the other CS (e.g., DBLP) and Med (e.g., Pubmed) academic datasets that are commonly used in existing heterogeneous GNN and heterogeneous graph mining studies. 
+Moreover, the three datasets used are far more distinguishable than previously wide-adopted small citation graphs used in GNN studies, such as Cora, Citeseer, and Pubmed~\cite{gcn,gat}, which only contain thousands of nodes. 
+
+
+%The heterogeneous graph schema of OAG is defined in Table~\ref{tab:schema}. 
+There are totally five node types: `Paper', `Author', `Field', `Venue', and `Institute'. 
+%Unlike many previous works on heterogeneous academic graphs that only use a small number of edge relations, we consider in total 32 types of edges. 
+The `Field' nodes in OAG are categorized into six levels from $L_0$ to $L_5$, which are organized with a hierarchical tree. % (We use `Within' and `Within$^{-1}$' to represent this hierarchy). 
+Therefore, we differentiate the `Paper--Field' edges corresponding to the field level. 
+
+%For example, the `Field' nodes in the OAG are categorized into six levels from $L_0$ to $L_5$, which are organized with a hierarchical tree (We use `Within' and `Within$^{-1}$' to represent this hierarchy). 
+%Therefore, we differentiate the `Paper--Field' edges in the corresponding field levels. 
+In addition, we differentiate the different author orders (i.e., the first author, the last one, and others) and venue types (i.e., journal, conference, and preprint) as well. 
+%Moreover, we also consider some academically-interesting edges to enrich the graph, such as the coauthor link and authors' research fields. 
+Finally, the `Self' type corresponds to the self-loop connection, which is widely added in GNN architectures. 
+Except the `Self' relationship, which are symmetric, all other relation types $\phi$ have a reverse relation type $\phi^{-1}$. 
+
+
+\subsection{Experimental Setup}
+
+%We introduce how we conduct exer
+
+\vpara{Tasks and Evaluation.}
+%To test whether our proposed method can learn good representation for each type of nodes in Web-scale heterogeneous graphs, 
+We evaluate the \short\ model on four different real-world downstream tasks: the prediction of Paper--Field ($L_1$), Paper--Field ($L_2$), and Paper--Venue, and Author Disambiguation. 
+The goal of the first three node classification tasks is to predict the correct $L_1$ and $L_2$ fields that each paper belongs to or the venue it is published at, respectively. 
+%We model these three tasks as a node classification problem, where 
+We use different GNNs to get the contextual node representation of the paper and use a softmax output layer to get its classification label. 
+For author disambiguation, we select all the authors with the same name and their associated papers. 
+The task is to conduct link prediction between these papers and candidate authors. 
+After getting the paper and author node representations from GNNs, we use a Neural Tensor Network to get the probability of each author-paper pair to be linked. 
+
+
+For all tasks, we use papers published before the year 2015 as the training set, papers between 2015 and 2016 for validation, and papers between 2016 and 2019 as testing. 
+We choose NDCG and MRR, which are two widely adopted ranking metrics~\cite{DBLP:books/daglib/0027504, DBLP:series/synthesis/2014Li}, as the evaluation metrics. 
+All models are trained for 5 times and, the mean and standard variance of test performance are reported. 
+
+
+%\yd{to from here ===============================================================================================================}
+\vpara{Baselines.}We compare \short\ with two classes of state-of-art graph neural networks. 
+All baselines as well as our own model, 
+%\footnote{The dataset is publicly available at \url{https://www.openacademic.ai/oag/}, and the code and trained-models will be open-sourced upon publication.} 
+are implemented via the PyTorch Geometric (PyG) package~\cite{pyG}. 
+%, 
+%~\footnote{\url{https://github.com/rusty1s/pytorch_geometric}}, 
+%a GNN framework that supports fast training via graph gather/scatter operation.
+
+ The first class of GNN baselines is designed for homogeneous graphs, including:
+\begin{itemize}
+    \item Graph Convolutional Networks (GCN)~\cite{gcn}, which simply averages the neighbor's embedding followed by linear projection. We use the implementation provided in PyG.
+    \item Graph Attention Networks (GAT)~\cite{gat}, which adopts multi-head additive attention on neighbors. We use the implementation provided in PyG. 
+\end{itemize}
+
+The second class considered is several dedicated heterogeneous GNNs as baselines,  including: %that are dedicatedly designed for heterogeneous graphs, including:
+\begin{itemize}
+    \item Relational Graph Convolutional Networks (RGCN)~\cite{DBLP:conf/esws/SchlichtkrullKB18}, which keeps a different weight for each relationship, i.e., a relation triplet. We use the implementation provided in PyG.
+    \item Heterogeneous Graph Neural Networks (HetGNN)~\cite{DBLP:conf/kdd/ZhangSHSC19}, which adopts different Bi-LSTMs for different node type for aggregating neighbor information. We re-implement this model in PyG following the authors' official code.
+    \item Heterogeneous Graph Attention Networks (HAN)~\cite{DBLP:conf/www/WangJSWYCY19} design hierarchical attentions to aggregate neighbor information via different meta paths. We re-implement this model in PyG following the authors' official code.
+\end{itemize}
+
+In addition, to systematically analyze the effectiveness of the two major components of \short, i.e., Heterogeneous weight parameterization (Heter) and Relative Temporal Encoding (RTE), we conduct an ablation study, but comparing with models that remove these components. Specifically, we use $-Heter$ to denote models that uses the same set of weights for all meta relations, and use $-RTE$ to denote models that doesn't include relative temporal encoding. By considering all the permutations, we have: \short$_{-Heter}^{-RTE}$, \short$_{-Heter}^{+RTE}$, \short$_{+Heter}^{-RTE}$ and \short$_{+Heter}^{+RTE}$\footnote{Unless other stated, \short\ refers to \short$_{+Heter}^{+RTE}$.}.
+
+
+
+We use our \sampling\ algorithm proposed in Section~\ref{sec:train} for all baseline GNNs to handle the large-scale OAG graph. To avoid data leakage, we remove out the links we aim to predict (e.g., the Paper-Field link as the label) from the sub-graph.
+
+
+
+
+
+\begin{table*}[!tp]
+\centering
+\small
+\renewcommand\arraystretch{1.3}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{c|c|c|ccccc|cccc} 
+\toprule
+\multicolumn{3}{c|}{GNN Models} & GCN~\cite{gcn}  & RGCN~\cite{DBLP:conf/esws/SchlichtkrullKB18}& GAT~\cite{gat}& HetGNN~\cite{DBLP:conf/kdd/ZhangSHSC19} & HAN~\cite{DBLP:conf/www/WangJSWYCY19} &{ \short$_{-Heter}^{-RTE}$} & \short$_{-Heter}^{+RTE}$ & \short$_{+Heter}^{-RTE}$ & \short$_{+Heter}^{+RTE}$ \\ \midrule
+
+\multicolumn{3}{c|}{$\#$ of Parameters} &1.69M   & 8.80M   & 1.69M   & 8.41M   & 9.45M   &3.12M   &3.88M & 7.44M   & 8.20M \\
+\midrule
+\multicolumn{3}{c|}{Batch Time} &  0.46s  &   1.24s &   0.97s &   1.35s &   2.27s &  1.11s &  1.14s &   1.48s &  1.50s \\
+\midrule
+    \multirow{10}{*}{\tabincell{c}{CS}} 
+        & \multirow{2}{*}{Paper--Field ($L_1$)} & NDCG 
+         &.608$\pm$.062 & .603$\pm$.065 & .622$\pm$.071 & .612$\pm$.063 &.618$\pm$.058 & .662$\pm$.051 & .689$\pm$.042 &.705$\pm$.036 & \textbf{.718$\pm$.014}\\ 
+         ~&~& MRR 
+         &.679$\pm$.069 & .683$\pm$.056 & .694$\pm$.065 & .689$\pm$.060 &.691$\pm$.051 & .751$\pm$.036& .779$\pm$.027 &.799$\pm$.023 & \textbf{.823$\pm$.019}\\
+    \cmidrule{2-12}
+        ~ & \multirow{2}{*}{Paper--Field ($L_2$)} & NDCG & .344$\pm$.021 & .322$\pm$.053& .357$\pm$.058& .346$\pm$.071 &.352$\pm$.051& .362$\pm$.048& .371$\pm$.043 & .379$\pm$.047&\textbf{.403$\pm$.041}  \\
+        ~&~& MRR &.353$\pm$.053 &.340$\pm$.061 &.382$\pm$.057 & .373$\pm$.051 &.388$\pm$.065 & .394$\pm$.072&.397$\pm$.064&
+        .414$\pm$.076& \textbf{.439$\pm$.078}\\
+    \cmidrule{2-12}
+        ~ & \multirow{2}{*}{\tabincell{c}{Paper--Venue}} & NDCG  &.406$\pm$.081 & .412$\pm$.076  & .437$\pm$.082 & .431$\pm$.074&  .449$\pm$.072 & .456$\pm$.069&.461$\pm$.066 &.468$\pm$.074&  \textbf{.473$\pm$.054}  \\  ~&~& MRR & .215$\pm$.066 &.216$\pm$.105&.239$\pm$.089 & .245$\pm$.069& .254$\pm$.074 & .258$\pm$.085& .265$\pm$.090 &.275$\pm$.089 &\textbf{.288$\pm$.088}\\
+    \cmidrule{2-12}
+        ~ & \multirow{2}{*}{\tabincell{c}{Author\\Disambiguation}} & NDCG &.826$\pm$.039 & .835$\pm$.042&.864$\pm$.051 & .850$\pm$.056& .859$\pm$.053 & .867$\pm$.048 &.875$\pm$.046 & .886$\pm$.048& \textbf{.894$\pm$.034}\\  ~&~& MRR &.661$\pm$.045&.665$\pm$.054 &.694$\pm$.052 & .668$\pm$.061 &.688$\pm$.049 & .703$\pm$.036& .712$\pm$.032 &.727$\pm$.038 & \textbf{.732$\pm$.038}  \\
+\midrule
+\multirow{10}{*}{\tabincell{c}{Med}} 
+          & \multirow{2}{*}{Paper--Field ($L_1$)} 
+          & NDCG &.560$\pm$.056 & .571$\pm$.061 & .584$\pm$.076 & .598$\pm$.068 & .607$\pm$.054&.654$\pm$.048 & .667$\pm$.045 &.683$\pm$.037 & \textbf{.709$\pm$.029}  \\  
+          ~&~& MRR &.465$\pm$.055 &.470$\pm$.082 &.493$\pm$.069 & .509$\pm$.054& .575$\pm$.057 &.620$\pm$.066 &.642$\pm$.062 &.659$\pm$.055 & \textbf{.688$\pm$.048}\\
+    \cmidrule{2-12}
+        ~ & \multirow{2}{*}{Paper--Field ($L_2$)} & NDCG& .334$\pm$.035 & .337$\pm$.051& .344$\pm$.063&.342$\pm$.048  &.350$\pm$.059 & .359$\pm$.053& .365$\pm$.047 & .374$\pm$.050&\textbf{.384$\pm$.046}\\
+        ~&~& MRR &.337$\pm$.061 &.343$\pm$.063 &.370$\pm$.058 &.373$\pm$.061 &.379$\pm$.052 & .385$\pm$.071& .397$\pm$.069&
+        .408$\pm$.071& \textbf{.417$\pm$.074}\\
+    \cmidrule{2-12}
+        ~ & \multirow{2}{*}{\tabincell{c}{Paper--Venue }} & NDCG  &.377$\pm$.059
+         & .383$\pm$.062 &.388$\pm$.065&  .412$\pm$.057& .416$\pm$.068& .421$\pm$.083 & .432$\pm$.078  &\textbf{.446$\pm$.083} &.445$\pm$.085  \\  ~&~& MRR &.211$\pm$.045 & .217$\pm$.058 &.244$\pm$.091 & .259$\pm$.072& .271$\pm$.056 & .277$\pm$.081&.282$\pm$.085 &.288$\pm$.074 & \textbf{.291$\pm$.062}\\
+    \cmidrule{2-12}
+        ~ & \multirow{2}{*}{\tabincell{c}{Author\\Disambiguation}}&MRR &.776$\pm$.042 & .779$\pm$.048&.828$\pm$.044 &.824$\pm$.058 & .834$\pm$.056 & .838$\pm$.047&.844$\pm$.041 & .864$\pm$.043& \textbf{.871$\pm$.040}\\  ~&~& NDCG &.614$\pm$.051&.625$\pm$.049 &.663$\pm$.046 & .659$\pm$.061 &.667$\pm$.053 &.683$\pm$.055 &.691$\pm$.046 &.708$\pm$.041 & \textbf{.718$\pm$.043}  \\ 
+\midrule
+\multirow{10}{*}{\tabincell{c}{OAG}} 
+          & \multirow{2}{*}{Paper--Field ($L_1$)} & NDCG&.508$\pm$.141  & .511$\pm$.128 & .534$\pm$.103 & .543$\pm$.084 & .544$\pm$.096 &.571$\pm$.089 & .578$\pm$.086 & .595$\pm$.089 & \textbf{.615$\pm$.084}  \\  
+          ~&~& MRR &.556$\pm$.136  & .565$\pm$.105 & .610$\pm$.096 & .616$\pm$.076 & .622$\pm$.092&.649$\pm$.081 & .657$\pm$.078 & .675$\pm$.082 & \textbf{.702$\pm$.081}\\
+    \cmidrule{2-12}
+        ~ & \multirow{2}{*}{Paper--Field ($L_2$)} & NDCG &.318$\pm$.074 & .328$\pm$.046& .339$\pm$.049& .336$\pm$.062  & .342$\pm$.051&.350$\pm$.045 & .354$\pm$.046 & .358$\pm$.052&\textbf{.367$\pm$.048}\\
+        ~&~& MRR &.322$\pm$.067 &.332$\pm$.052 &.348$\pm$.045 &.350$\pm$.053 &.358$\pm$.049 &.362$\pm$.057 &.369$\pm$.058&
+        .371$\pm$.064& \textbf{.378$\pm$.071}\\
+    \cmidrule{2-12}
+        ~ & \multirow{2}{*}{\tabincell{c}{Paper--Venue }} & NDCG  &.302$\pm$.066
+         & .313$\pm$.051 &.317$\pm$.057& .309$\pm$.071& .327$\pm$.062& .334$\pm$.058 &.341$\pm$.059  &.353$\pm$.064 &\textbf{.355$\pm$.062}  \\  ~&~& MRR &.194$\pm$.070 & .193$\pm$.047 &.196$\pm$.052 & .192$\pm$.059& .214$\pm$.067&.229$\pm$.061 &.233$\pm$.060 &.243$\pm$.048 & \textbf{.247$\pm$.061}\\
+    \cmidrule{2-12}
+        ~ & \multirow{2}{*}{\tabincell{c}{Author\\Disambiguation}} & NDCG &.738$\pm$.042 & .755$\pm$.048&.797$\pm$.044 &.803$\pm$.058 & .821$\pm$.056 & .835$\pm$.043&.841$\pm$.041 & .847$\pm$.043& \textbf{.852$\pm$.048}\\   ~&~& MRR &.612$\pm$.064&.619$\pm$.057 &.645$\pm$.063 & .649$\pm$.052 &.660$\pm$.049 &.668$\pm$.059 &.674$\pm$.058 &.683$\pm$.066 & \textbf{.688$\pm$.054}  \\
+\bottomrule
+
+\end{tabular}
+
+\caption{Experimental results of different methods over the three datasets.} 
+\label{tab:result} 
+\end{table*}
+
+
+\hide{
+We compare \short\ with several state-of-art graph neural networks. 
+All these baselines as well as our model\footnote{The dataset is publicly available at \url{https://www.openacademic.ai/oag/}, and the code and trained-models will be open-sourced upon publication.} are implemented via the PyTorch Geometric (PyG) package~\cite{pyG}, a GNN framework that supports fast training via graph gather/scatter operation. The first class of GNN baselines is designed for homogeneous graphs, including:
+\begin{itemize}
+    \item Graph Convolutional Networks (GCN)~\cite{gcn}, which simply averages the neighbor's embedding followed by linear projection. We use the implementation provided in PyG~\footnote{\url{https://pytorch-geometric.readthedocs.io/en/latest/_modules/torch_geometric/nn/conv/graph_conv.html}}.
+    \item Graph Attention Networks (GAT)~\cite{gat}, which adopts multi-head additive attention on neighbors. We use the implementation provided in PyG~\footnote{\url{https://pytorch-geometric.readthedocs.io/en/latest/_modules/torch_geometric/nn/conv/gat_conv.html}}. 
+\end{itemize}
+
+Also, we also compared with GNNs that is dedicatedly designed for heterogeneous graphs, including:
+\begin{itemize}
+    \item Relational Graph Convolutional Networks (RGCN)~\cite{DBLP:conf/esws/SchlichtkrullKB18}, which keeps a different weight for each relationship, i.e., a relation triplet. We use the implementation provided in PyG~\footnote{\url{https://pytorch-geometric.readthedocs.io/en/latest/_modules/torch_geometric/nn/conv/rgcn_conv.html}}.
+    \item Heterogeneous Graph Neural Networks (HetGNN)~\cite{DBLP:conf/kdd/ZhangSHSC19}, which adopts different Bi-LSTMs for different node type for aggregating neighbor information. We re-implement this model in PyG following the authors' official code~\footnote{\url{https://github.com/chuxuzhang/KDD2019_HetGNN}}.
+    \item Heterogeneous Graph Attention Networks (HAN)~\cite{DBLP:conf/www/WangJSWYCY19}, which adopts two layers of attentions to aggregate neighbor information via different meta paths. We re-implement this model in PyG following the authors' official code~\footnote{\url{https://github.com/Jhy1993/HAN}}.
+\end{itemize}
+
+\yd{consider to remove all baselines' github links}
+
+%\zn{which graph to train on, which network embedding algorithm? }
+
+To further examine whether the components in our model can indeed exploit heterogeneity and temporal dependency, and eventually benefit downstream performance, we also propose two baselines as ablation study:  HGT$_{\text{noHeter}}$, which uses a same set of weight for all meta relation, and HGT$_{\text{noTime}}$, which removes the relative temporal encoding component. 
+
+% \yd{to zn: check whether this is correct? Yes}
+As all of the baseline GNNs cannot handle the large-scale input graphs, we use 
+%For each node or pair of nodes we are considering, we use 
+the heterogeneous mini-batch graph sampling algorithm proposed in Section~\ref{sec:train} for all of them to get a sub-graph for each interested node or node pair. 
+To avoid data leakage, we remove out the link we aim to predict (e.g. the Paper-Field link as the label) from this sub-graph.
+
+\vpara{Input Features.}As we don't assume the feature of each data type belongs to the same distribution, we are free to use the most appropriate features to represent each type of node. 
+For paper and author nodes, the node numbers are extremely large. Therefore, traditional node embedding algorithms are not suitable for extracting features for them. 
+We, therefore, resort to the paper titles for extracting features. For each paper, we get its title text and use a pre-trained XLNet~\cite{xlnet, wolf2019transformers} to get the representation of each word in the title. We then average them weighted by each word's attention to get the title representation for each paper. The initial feature of each author is simply an average of his/her published papers' embeddings. For field, venue and institute nodes, the node numbers are small and we use the metapath2vec model~\cite{dong2017metapath2vec} to train their node embeddings by reflecting the heterogeneous network structures. 
+
+
+\vpara{Implementation Details.}
+The homogeneous graph neural network baselines (e.g., GCN and GAT) assume the node features belong to the same distribution, while our feature extraction doesn't fulfill this assumption. 
+If we directly feed the feature into these different baselines, they are unlikely to achieve good performance. 
+To make a fair comparison, for all the models, we add an adaptation layer between the input feature and the GNNs. This module simply conducts different linear projection for nodes in different node types. Such a procedure can be regarded to map heterogeneous data into the same distribution, which is also adopted in~\cite{DBLP:conf/kdd/ZhangSHSC19, DBLP:conf/www/WangJSWYCY19}. 
+
+We set the output dimension of such module as 256, and use it as the hidden dimension throughout the networks for all baselines. For all multi-head attention-based methods, we choose the head number as 8. All the GNNs keep 3 layers so that the receptive fields of each network is exactly the same. All the GNNs are optimized via AdamW optimizer~\cite{DBLP:conf/iclr/LoshchilovH19} with Cosine Annealing Learning Rate Scheduler~\cite{DBLP:conf/iclr/LoshchilovH17}. For each model, we train it for 200 epochs, select the one with the lowest validation loss as the best model. 
+} %end of hide ======================================
+
+
+
+\vpara{Input Features.}As we don't assume the feature of each node type belongs to the same distribution, we are free to use the most appropriate features to represent each type of nodes. 
+%For the paper and author entities, %, the node counts are extremely large. 
+%Therefore, traditional node embedding algorithms are not suitable for extracting features for them. 
+%We us the paper titles for extracting features. 
+For each paper, we use a pre-trained XLNet~\cite{xlnet, wolf2019transformers} to get the representation of each word in its title. 
+We then average them weighted by each word's attention to get the title representation for each paper. 
+The initial feature of each author is then simply an average of his/her published papers' representations. 
+For the field, venue, and institute nodes, we use the metapath2vec model~\cite{dong2017metapath2vec} to train their node embeddings by reflecting the heterogeneous network structures. 
+
+
+
+The homogeneous GNN baselines assume the node features belong to the same distribution, while our feature extraction doesn't fulfill this assumption. 
+%If we directly feed the feature into these different baselines, they are unlikely to achieve good performance. 
+To make a fair comparison, we add an adaptation layer between the input features and all used GNNs. 
+This module simply conducts different linear projections for nodes of different  types. 
+Such a procedure can be regarded to map heterogeneous data into the same distribution, which is also adopted in literature~\cite{DBLP:conf/kdd/ZhangSHSC19, DBLP:conf/www/WangJSWYCY19}. 
+
+\vpara{Implementation Details.}
+We use 256 as the hidden dimension throughout the neural networks for all baselines. For all multi-head attention-based methods, we set the head number as 8. 
+All GNNs keep 3 layers so that the receptive fields of each network are exactly the same. 
+All baselines are optimized via the AdamW optimizer~\cite{DBLP:conf/iclr/LoshchilovH19} with the Cosine Annealing Learning Rate Scheduler~\cite{DBLP:conf/iclr/LoshchilovH17}. For each model, we train it for 200 epochs and select the one with the lowest validation loss as the reported model. We use the default parameters used in GNN literature and donot tune hyper-parameters. 
+
+
+
+
+
+\subsection{Experimental Results}
+We summarize the experimental results of the proposed model and baselines on three datasets in  Table ~\ref{tab:result}. 
+All experiments for the four tasks are evaluated in terms of NDCG and MRR. 
+
+
+The results show that in terms of both metrics, the proposed \short\ significantly and consistently outperforms all baselines for all tasks on all datasets. 
+Take, for example, the Paper--Field ($L_1$) classification task on OAG, \short\ achieves relative performance gains over baselines by 15--19\% in terms of NDCG and 18--21\% in terms of MRR (i.e., the performance gap divided by the baseline performance). 
+When compared to HAN---the best baseline for most of the cases, the average relative NDCG improvements of \short\ on the CS, Med and OAG datasets are 11$\%$, 10$\%$ and 8$\%$, respectively. 
+
+Overall, we observe that on average, \short\ outperforms GCN, GAT, RGCN, HetGNN, and HAN by 20\% for the four tasks on all three large-scale datasets.  
+Moreover, \short\ has fewer parameters and comparable batch time than all the heterogeneous graph neural network baselines, including RGCN, HetGNN, and HAN. 
+This suggests that by modeling heterogeneous edges according to their meta relation schema, we are able to have better generalization with fewer resource consumption. 
+
+
+
+\vpara{Ablation Study.}The core component in \short\ are the heterogeneous weight parameterization (Heter) and Relative Temporal Encoding (RTE).
+To further analyze their effects, we conduct an ablation study by removing them from \short. 
+Specifically, the model that removes heterogeneous weight parameterization, i.e., \short$_{-Heter}^{+RTE}$, drops 4\% of performance compared with the full model \short$_{+Heter}^{+RTE}$. 
+By removing RTE (i.e., \short$_{+Heter}^{-RTE}$), the performance has a 2\% drop. 
+The ablation study shows the significance of parameterizing with meta relations and using Relative Temporal Encoding.
+
+
+
+In addition, we also try to implement a baseline that keeps a unique weight matrix for each relation. However, such a baseline contains too many parameters so that our experimental setting doesn't have enough GPU memory to optimize it. This also indicates that using the meta relation to parameterize weight matrices can achieve competitive performance with fewer resources.
+
+
+\subsection{Case Study}
+
+To further evaluate how  Relative Temporal Encoding (RTE) can help \short\ to capture graph dynamics, we conduct a case study showing the evolution of conference topic. 
+We select 100 conferences in computer science with the highest citations, assign them three different timestamps, i.e., 2000, 2010 and 2020, and construct sub-graphs initialized by them. 
+Using a trained HGT, we can get the representations for these conferences, with which we can calculate the euclidean distances between them. 
+We select WWW, KDD, and NeurIPS as illustration. 
+For each of them, we pick the top-5 most similar conferences (i.e., the one with the smallest euclidean distance) to show how the conference's topics evolve over time. 
+
+
+As shown in Table~\ref{tab:case}, these venues' relationships have changed from 2000 to 2020. 
+For example, WWW in 2000 was more related to some database conferences, i.e., SIGMOD and VLDB, and some networking conferences, i.e., NSDI and GLOBECOM. 
+However,  WWW in 2020 would become more related to some data mining and information retrieval conferences (KDD, SIGIR, and WSDM), in addition to SIGMOD and GLOBECOM. 
+Also, KDD in 2000 was more related to traditional database and data mining venues, while in 2020 it will tend to correlate with a variety of topics, i.e. machine learning (NeurIPS), database (SIGMOD), Web (WWW), AI (AAAI), and NLP (EMNLP). 
+Additionally, our \short\ model can capture the difference brought by new conferences. 
+For example, NeurIPS in 2020 would relate with ICLR, which is a newly organized deep learning conference. 
+This case study shows that the relative temporal encoding can help capture the temporal evolution of the heterogeneous academic graphs.
+
+\begin{table}[t!]
+\centering
+\renewcommand\arraystretch{1.3}
+\begin{tabular}{ccc} 
+\toprule
+Venue & Time & Top$-$5 Most Similar Venues \\
+\midrule
+\multirow{3}{*}{WWW} & 2000 & SIGMOD, VLDB, NSDI, GLOBECOM, SIGIR\\
+~& 2010 & GLOBECOM, KDD, CIKM, SIGIR, SIGMOD\\
+~& 2020 & KDD, GLOBECOM, SIGIR, WSDM, SIGMOD\\
+\midrule
+\multirow{3}{*}{KDD} & 2000 & SIGMOD, ICDE, ICDM, CIKM, VLDB\\
+~& 2010 & ICDE, WWW, NeurIPS, SIGMOD, ICML\\
+~& 2020 & NeurIPS, SIGMOD, WWW, AAAI, EMNLP\\
+\midrule
+\multirow{3}{*}{NeurIPS} & 2000 & ICCV, ICML, ECCV, AAAI, CVPR\\
+~& 2010 & ICML, CVPR, ACL, KDD, AAAI\\
+~& 2020 & ICML, CVPR, ICLR, ICCV, ACL\\
+% \midrule
+% \multirow{3}{*}{ACL} & 2000 & EMNLP, NAACL, COLING, AAAI, ICASSP\\
+% ~& 2010 & EMNLP, NeurIPS, AAAI, NAACL, CVPR\\
+% ~& 2020 & AAAI, ICML, EMNLP, IJCAI, ICASSP\\
+\bottomrule
+\end{tabular}
+\caption{Temporal Evolution of Conference Similarity.} 
+\label{tab:case} 
+\end{table}
+
+
+\subsection{Visualize Meta Relation Attention}
+To illustrate how the incorporated meta relation schema can benefit the heterogeneous message passing process, we pick the schema that has the largest attention value in each of the first two \short\ layers and plot the meta relation attention hierarchy tree in Figure~\ref{fig:meta}. 
+For example, to calculate a paper's representation, 
+$\langle$Paper, $is\_published\_at$, Venue, $is\_published\_at^{-1}$, Paper$\rangle$, 
+$\langle$Paper, $has\_L_2\_field\_of$, Field, $has\_L_5\_field\_of^{-1}$, Paper$\rangle$, 
+and $\langle$Institute, $is\_affiliated\_with^{-1}$, Author, $is\_first\_author\_of$, Paper$\rangle$
+are the three most important meta relation sequences, which can be regarded as meta paths \textit{PVP, PFP,} and \textit{IAP}, respectively. 
+Note that these meta paths and their importance are automatically learned from the data without manual design.  
+Another example of calculating an author node's representation is shown on the right. 
+%Similar results are shown for the author node as well on the right. 
+Such visualization demonstrates that \model\ is capable of implicitly learning to construct important meta paths for specific downstream tasks, without manual customization.
+
+\hide{
+ \begin{figure}[t!]
+    \centering
+        \includegraphics[width=0.5\textwidth, trim = 30 0 50 0,clip]{picture/meta.png}
+    \caption{Hierarchy tree of learned meta relation attention.}
+    \label{fig:meta}
+\end{figure} 
+
+}
+
+
+ \begin{figure}[t!]
+    \centering
+        \includegraphics[width=0.46\textwidth, trim = 30 50 40 35,clip]{picture/meta2.png}
+    \caption{Hierarchy of the learned meta relation attention.}
+    \label{fig:meta}
+    \vspace{-0.3cm}
+\end{figure} 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\hide{
+\subsection{Dataset Description}
+
+To test our proposed model's performance on real-world heterogeneous and dynamic web-scale graph, we choose Open Academic Graph (OAG)~\cite{DBLP:conf/www/SinhaSSMEHW15, DBLP:conf/kdd/ZhangLTDYZGWSLW19}, the largest public heterogeneous academic graph, as our experimental datasets. 
+% General Description
+We define the heterogeneous graph schema of OAG as in table~\ref{tab:schema}. There are totally 5 node types: `Paper', `Author', `Field', `Venue' and `Institute'. For edges, unlike many previous works on heterogeneous academic graphs that only has a small number of edge relations, in this paper we define totally 32 edge types. For example, the `Fields' in the OAG are categorized into six levels from $L_0$ to $L_5$, which is organized with a hierarchical tree (We use `Within' and `Within$^{-1}$' to represent such hierarchy). Therefore, we differentiate the `Paper-Field' edges in the corresponding field levels. We also differentiate the different author order and venue type as well. In addition to direct edge, we also add some higher-order edges to enrich the graph. For example, a paper can have multiple authors, and thus the `A-P-A' path can represent co-authorship. We also use `A-P-F', `A-P-V', `I-A-P-A-I' paths to augment the graph. The `Self' type corresponds to self-loop connection, which is widely added in GNN architecture. Despite `Self' and `CoAuthor' edge relationship, which are symmetric, all other edge type will have a reverse edge type. 
+
+To test the generalization of our proposed model, we construct two main fields of OAG, the Computer Science (CS) and Medicine (Med). We select the papers with $L_0$ field as CS or Med, and reconstruct two domain-specific datasets CS-OAG and Med-OAG associated with these papers. We also test the result for the whole graph, as All-OAG. The statistics of these three datasets are shown in table~\ref{tab:stat}. The All-OAG contains 0.178 billion nodes and 3.01 billion edges, spanning papers from 1900 to 2019. Till now, this is the largest-scale graph data to evaluate performance of GNNs, which is far more distinguishable than previously wide-adopted small citation graph, such as Cora, Citeseer and Pubmed~\cite{gcn}, which only contain thousands of nodes.
+
+
+
+\subsection{Implementation and Baselines}
+
+To test whether our proposed method can learn good representation for each type of nodes in web-scale heterogeneous graphs, we choose four different real-world downstream tasks as evaluation: Paper-Field (L1), Paper-Field (L2), Paper-Venue, and Author Disambiguation. In the first three tasks, we give a model a paper and wants it to predict the correct L1, L2 field it belongs to or the venue it's published on. We model such problem as a node classification problem, where we use GNN to get the contextual node representation of the paper, and use a softmax output layer to get its classification label. For author disambiguation, we pick all the authors with same name, and the papers that link to one of these same-name author nodes. The task is to conduct link prediction between paper and candidate authors. After getting the paper and author node representation from GNN, we use a DistMult operator~\cite{DBLP:journals/corr/YangYHGD14a} to get the probability of each author-paper pair to be linked. We choose NDCG and MRR, which are two widely adopted ranking metric~\cite{DBLP:books/daglib/0027504, DBLP:series/synthesis/2014Li}, as the evaluation measures.
+
+
+For all these tasks and all datasets, we use papers published before year 2015 as training, between 2015 and 2016 for validation, and paper after 2016 as testing. For each node or pair of nodes we are considering, we use the sampling algorithm discussed in Section~\ref{sec:train} to get a sub-graph, and remove out the link we want to predict (e.g. Paper-Field link) from this graph to avoid data leakage.
+
+As we don't assume the feature of each data type belongs to the same distribution, we are free to use the most appropriate feature to represent each type of nodes. For paper and author nodes, the node number is extremely large. Therefore, traditional node embedding algorithm is not suitable for extracting features for them. We therefore resort to the paper title as feature. For each paper, we get their title text, and use a pre-trained XLNet~\cite{xlnet, wolf2019transformers} to get representation of each word in the title. We then average them weighted by each word attention to get title representation for each paper. The initial feature of each author is simply an average of his/her published paper's embedding. For field, venue and institute, the node number is small and we can train a node embedding by reflect sub-network structure. \zn{which graph to train on, which network embedding algorithm? }
+\zn{Add a table to describe dataset and task statistics if there is some space left}
+
+We compare HGT with some state-of-art graph neural networks. All these baselines as well as our own model\footnote{The dataset is publicly available at \url{https://www.openacademic.ai/oag/}, and the code and trained-models will be open-sourced upon publication.} are implemented via PyTorch Geometric (PyG) package~\cite{pyG}, a GNN framework that supports fast training via graph gather/scatter operation. The first class of GNNs are designed for homogeneous graphs, including:
+\begin{itemize}
+    \item Graph Convolutional Networks (GCN)~\cite{gcn}, which simply average the neighbor's embedding followed by linear projection. We use the implementation provided in PyG~\footnote{\url{https://pytorch-geometric.readthedocs.io/en/latest/_modules/torch_geometric/nn/conv/graph_conv.html}}.
+    \item Graph Attention Networks (GAT)~\cite{gat}, which adopts multi-head additive attention on neighbors. We use the implementation provided in PyG~\footnote{\url{https://pytorch-geometric.readthedocs.io/en/latest/_modules/torch_geometric/nn/conv/gat_conv.html}}. 
+\end{itemize}
+We also compared with GNNs that dedicatedly designed for heterogeneous graphs, including:
+\begin{itemize}
+    \item Relational Graph Convolutional Networks (RGCN)~\cite{DBLP:conf/esws/SchlichtkrullKB18}, which keeps a different weight for each relationship, i.e., a relation triplet. We use the implementation provided in PyG~\footnote{\url{https://pytorch-geometric.readthedocs.io/en/latest/_modules/torch_geometric/nn/conv/rgcn_conv.html}}.
+    \item Heterogeneous Graph Neural Networks (HetGNN)~\cite{DBLP:conf/kdd/ZhangSHSC19}, which adopts different Bi-LSTMs for different node type for aggregating neighbor information. We re-implement this model in PyG following the authors' official code~\footnote{\url{https://github.com/chuxuzhang/KDD2019_HetGNN}}.
+    \item Heterogeneous Graph Attention Networks (HAN)~\cite{DBLP:conf/www/WangJSWYCY19}, which adopts two layers of attentions to aggregate neighbor information via different meta paths. We re-implement this model in PyG following the authors' official code~\footnote{\url{https://github.com/Jhy1993/HAN}}.
+\end{itemize}
+
+To further examine whether the components in our model can indeed exploit heterogeneity and temporal dependency, and eventually benefit downstream performance, we also propose two baselines as ablation study:  HGT$_{\text{noHeter}}$, which uses a same set of weight for all meta relation, and HGT$_{\text{noTime}}$, which removes the relative temporal encoding component. 
+
+As most of these graph neural network baselines assume the node features belong to the same distribution, while our feature extraction doesn't fulfill this assumption, if we directly feed the feature into these different baselines, they are unlikely to achieve good performance. To make fair comparison, for all the models, we add an adaptation layer between the input feature and the GNNs. This module simply conducts different linear projection for nodes in different node types. Such procedure can be regarded to map heterogeneous data into same distribution, which is also adopted in~\cite{DBLP:conf/kdd/ZhangSHSC19, DBLP:conf/www/WangJSWYCY19}. We set the output dimension of such module as 256, and use as the hidden dimension throughout the networks for all baselines. For all multi-head attention-based methods, we choose head number as 8. All the GNNs keep 3 layers, so that the receptive fields of each network is exactly the same. All the GNNs are optimized via AdamW optimizer~\cite{DBLP:conf/iclr/LoshchilovH19} with Cosine Annealing Learning Rate Scheduler~\cite{DBLP:conf/iclr/LoshchilovH17}. For each model, we train it for 200 epochs, select the one with lowest validation loss as the best model. We train the model for 5 times and calculate the mean and standard variance of test performance. 
+
+
+\subsection{Performance Analysis}
+
+Table ~\ref{tab:result} summarizes the performance of HGT and baselines for different datasets and tasks. The results show that our proposed HGT significantly enhance the performance for all tasks. Compared to the current state-of-the-art method, HAN~\cite{DBLP:conf/www/WangJSWYCY19}, the average relative NDCG improvements (i.e., the performance difference  divided  by the baseline  performance) of HGT on CS-OAG, Med-OAG and All-OAG datasets are 24.0$\%$, 17.5$\%$ and 14.6$\%$ respectively. Moreover, HGT has less parameters than all the heterogeneous graph neural network baselines, including RGCN, HetGNN and HAN. This shows that by modelling relationship by its meta schema, it's possible to have better generalization with few resource consumption. 
+
+The two most important components of HGT is the meta relation parametrization and temporal encoding. To further analyze their effect, we conduct ablation study by removing each component: HGT$_{\text{noHeter}}$ only maintains a single set of parameter for all relations, which is equivalent to vanilla Transformer applied on graph, while HGT$_{\text{noTime}}$ discards the relative temporal encoding. We can see that after removing these two components, the NDCG performance drop 7.4$\%$ and 3.8$\%$ respectively, indicating the importance of both heterogeneous weight parametrization and temporal encoding. Among these two components, heterogeneity is more informative for the academic graph modelling. Also, we try to implement a baseline that keeps a different weight matrix for each relation. However, such a baseline contains too many parameters so that our experimental setting doesn't have enough GPU memory to optimize it. This also indicates that using heterogeneous schema to parametrize weight matrics can achieve good performance with fewer resources.
+
+\subsection{Case Study: Venue Similarity Evolution}
+
+To further evaluate how our proposed model can capture graph dynamics, we conduct a case study showing the evolution of conference similarity. We select 100 conferences in computer science with highest citation, assign them three different timestamps, i.e., 2000, 2010 and 2020, and construct sub-graphs initialized by them. Using a trained HGT, we can get venue representations for these conferences, with which we can calculate their mutual distance with euclidean distance. We select WWW, KDD, NeurIPS and ACL as illustration. For each of these conference, we pick top-5 most similar venues (i.e., with smallest euclidean distance) with it, showing how the conference topic might change. 
+
+As is shown in table~\ref{tab:case}, these venues's relationship has changed from 2000 to 2020. For example, in 2000, WWW is more related to some database conferences, such as SIGMOD and VLDB, and some network conferences, such as NSDI and GLOBECOM. While WWW in 2020 becomes more related to some data mining and information retrieval conferences as KDD, SIGIR and WSDM. Also, KDD in 2000 is 
+more related with some traditional database and data engineering conferences, including SIGMOD and ICDE. While in 2020, it has a trend to correlates with some machine learning conferences such as NeurIPS, AAAI. Also, our model can capture the difference brought by new conference. For example, NeurIPS in 2020 is relates with ICLR, which is a newly organized conference. This case study shows that our proposed relative temporal encoding mechanism can help capture the temporal differences and dependency.
+
+\begin{table}[th]
+\centering
+\begin{tabular}{ccc} 
+\toprule
+Venue & Time & Top$-$5 Most Similar Venues \\
+\midrule
+\multirow{3}{*}{WWW} & 2000 & SIGMOD, VLDB, NSDI, GLOBECOM, SIGIR\\
+~& 2010 & GLOBECOM, KDD, CIKM, SIGIR, SIGMOD\\
+~& 2020 & KDD, GLOBECOM, SIGIR, WSDM, SIGMOD\\
+\midrule
+\multirow{3}{*}{KDD} & 2000 & SIGMOD, ICDE, ICDM, CIKM, VLDB\\
+~& 2010 & ICDE, WWW, NeurIPS, SIGMOD, ICML\\
+~& 2020 & NeurIPS, SIGMOD, WWW, AAAI, EMNLP\\
+\midrule
+\multirow{3}{*}{NeurIPS} & 2000 & ICCV, ICML, ECCV, AAAI, CVPR\\
+~& 2010 & ICML, CVPR, ACL, KDD, AAAI\\
+~& 2020 & ICML, CVPR, ICLR, ICCV, ACL\\
+\midrule
+\multirow{3}{*}{ACL} & 2000 & EMNLP, NAACL, COLING, AAAI, ICASSP\\
+~& 2010 & EMNLP, NeurIPS, AAAI, NAACL, CVPR\\
+~& 2020 & AAAI, ICML, EMNLP, IJCAI, ICASSP\\
+\bottomrule
+\end{tabular}
+\caption{Temporal Evolution of Conference Similarity.} 
+\label{tab:case} 
+\end{table}
+
+\subsection{Visualize Meta Relation Attention}
+To illustrate how the incorporated meta relation schema can benefit the GNN message passing, we pick out the largest attention value associated with each relation schema in first two layers, and plot the meta relation attention hierarchy tree. As is shown in figure~\ref{fig:meta}, to calculate a paper's representation, $\langle$Paper, Pub$_{\text{conf}}$, Venue, Pub$_{\text{conf}}^{-1}$, Paper$\rangle$, $\langle$Paper, In$_{L_2}$, Field, In$_{L_5}^{-1}$, Paper$\rangle$ and $\langle$Field, In$_{L_1}$, Author, Write$_{\text{lastLast}}$, Paper$\rangle$ are the three most important meta relation sequence, or can be regarded as meta path. Similar result is shown for author. Such visualization indicates that HGT can automatically learn to construct important meta paths for a specific downstream task, without specific domain knowledge.
+
+ \begin{figure}[ht!]
+    \centering
+    \includegraphics[width=0.5\textwidth, trim = 30 0 50 0,clip]{picture/meta.png}
+    \caption{Hierarchy tree of learned meta relation attention.}
+    \label{fig:meta}
+\end{figure} 
+
+}%end of hide

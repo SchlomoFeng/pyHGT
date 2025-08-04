@@ -1,0 +1,434 @@
+\begin{figure*}[ht!]
+    \centering
+    \includegraphics[width=0.98\textwidth, trim = 10 0 10 0, clip
+    ]{picture/attention4.png}
+    \caption{The Overall Architecture of Heterogeneous Graph Transformer. 
+    \textmd{ Given a sampled heterogeneous sub-graph with $t$ as the target node, $s_1$ \& $s_2$ as source nodes, the \short\ model takes its edges $e_1=(s_1, t)$ \& $e_2=(s_2, t)$ and their corresponding meta relations $<\tau(s_1), \phi(e_1), \tau(t)>$ \& $<\tau(s_2), \phi(e_2), \tau(t)>$ as input to learn a  contextualized representation $H^{(L)}$ for each node, which can be used for downstream  tasks. 
+    Color decodes the node type. 
+    HGT includes three components: (1) meta relation-aware heterogeneous mutual attention,  (2) heterogeneous message passing from source nodes, and (3) target-specific heterogeneous message aggregation.}}
+    \label{fig:my_label}
+\end{figure*} 
+
+
+
+%\yd{to add definition of meta relation}
+
+%\yd{to rm batch norm}
+
+In this section, we present the \model\ (\short). % for modeling heterogeneous graphs with network dynamics. 
+Its  idea is to use the \textbf{meta relations} of heterogeneous graphs to parameterize weight matrices for the heterogeneous mutual attention, message passing, and propagation steps. 
+To further incorporate network dynamics, we introduce a relative temporal encoding mechanism into the model.
+
+
+
+
+\subsection{Overall \short\ Architecture}
+
+Figure~\ref{fig:my_label} shows the overall architecture of \model. Given a sampled heterogeneous sub-graph (Cf. Section \ref{sec:train}), \short\ extracts all linked node pairs, where target node $t$ is linked by source node $s$ via edge $e$. The goal of \short\ is to aggregate information from source nodes to get a contextualized representation for target node $t$. Such process can be decomposed into three components: \textit{Heterogeneous Mutual Attention}, \textit{Heterogeneous Message Passing} and \textit{Target-Specific Aggregation}. 
+
+We denote the output of the $(l)$-th \short\ layer as $H^{(l)}$, which is also the input of the $(l$+$1)$-th layer. 
+By stacking $L$ layers, we can get the node representations of the whole graph $H^{(L)}$, which can be used for end-to-end training or fed into downstream tasks.  
+
+\hide{
+\subsection{Relative Temporal Encoding}
+
+To incorporate temporal information into the model, one naive way is to construct a separate graph for each time slot. However, such a procedure may lose a large portion of structural information across different time slots. 
+Meanwhile, the representation of a node at time $t$ might rely on edges that happened at other time slots. 
+Therefore, %we claim that 
+a proper way to model dynamic graphs is to maintain all the edges happening at different times and allow nodes and edges with different timestamps to interact with each other.
+
+In light of this, we present the Relative Temporal Encoding (RTE) mechanism to model the dynamic dependencies in heterogeneous graphs. 
+RTE is inspired by Transformer's positional encoding method~\cite{DBLP:conf/nips/VaswaniSPUJGKP17, DBLP:conf/naacl/ShawUV18}, which has been shown successful to capture the sequential dependency of words in long texts. 
+
+Given a source node $s$ and a target node $t$, along with their corresponding timestamps $T(s)$ and $T(t)$, we denote the relative time gap $\Delta T(t,s) = T(t) - T(s)$ as an index to get a relative temporal encoding $RTE(\Delta T(t,s))$. Noted that the training dataset will not cover all possible time gaps, and thus  $RTE$ should be capable of generalizing to unseen time. We thus adopt a fixed set of sinusoid functions as basis, with a tunable linear projection T-Linear\footnote{For simplicity, we denote a linear projection L $:\RR^{a}\rightarrow \RR^{b}$ as a function to conduct linear transformation to vector $x\in\RR^{a}$ as: L$(x)=Wx+b$, where matrix $W\in\RR^{a+b}$ and bias $b\in\RR^{b}$. $W$ and $b$ are learnable parameters for L.}$: \RR^{d} \rightarrow \RR^{d}$ as $RTE$:
+\begin{align}
+   Base\big(\Delta T(t,s), 2i\big) & = sin\Big(\Delta T_{t,s} / 10000^{\frac{2i}{d}}\Big)\\ 
+   Base\big(\Delta T(t,s), 2i+1\big) & = cos\Big(\Delta T_{t,s} / 10000^{\frac{2i+1}{d}}\Big)\\ 
+   RTE\big(\Delta T(t,s)\big) & = \text{T-Linear}\Big( Base(\Delta T_{t,s}) \Big)
+\end{align}
+Finally, the temporal encoding relative to the target node $t$ is added to the source node $s$' representation as follows:
+\begin{align}
+    \widehat{H}^{(l-1)}[s] = H^{(l-1)}[s] + RTE\big(\Delta T(t,s)\big)
+\end{align}
+In this way, the temporal augmented representation $\widehat{H}^{(l-1)}$ will capture the relative temporal information of source node $s$ and target node $t$. The whole procedure is illustrated in the Figure \ref{fig:my_label} (1). 
+% \yd{may need to explain $\widehat{H}^{(l-1)}$ to data/web mining people }
+
+}% end of hide
+
+\subsection{Heterogeneous Mutual Attention}
+
+The first step is to calculate the mutual attention between source node $s$ and target node $t$. We first give a brief introduction to the general attention-based GNNs as follows: 
+\begin{align}
+H^{l}[t] \gets \underset{\forall s \in N(t), \forall e \in E(s,t)}{\textbf{Aggregate}}\Big(  \textbf{Attention}(s, t) \cdot \textbf{Message}(s)\Big)
+\end{align}
+where there are three basic operators: \textbf{Attention}, which estimates the importance of each source node; \textbf{Message}, which extracts the message by using only the source node $s$; and \textbf{Aggregate}, which aggregates the neighborhood message by the attention weight. 
+
+
+
+For example, the Graph Attention Network (GAT)~\cite{gat} adopts an additive mechanism as \textbf{Attention}, uses the same weight for calculating \textbf{Message}, and leverages the simple average followed by a nonlinear activation for the \textbf{Aggregate} step. 
+Formally, GAT has
+\begin{align}
+    \textbf{Attention}_{GAT}(s, t) & = \underset{\forall s \in N(t)}{\text{Softmax}} \bigg(\Vec{a} \Big(WH^{l-1}[t] \mathbin\Vert WH^{l-1}[s]\Big)\bigg) \nonumber\\
+    \textbf{Message}_{GAT}(s)  & = WH^{l-1}[s] \nonumber\\ 
+    \textbf{Aggregate}_{GAT}(\cdot) & = \sigma \Big(\text{Mean}(\cdot)\Big) \nonumber
+\end{align}
+Though GAT is effective to give high attention values to important nodes, it assumes that $s$ and $t$ have the same feature distributions by using one weight matrix $W$. 
+Such an assumption, as we've discussed in Section~\ref{sec:introduction}, 
+is usually incorrect for heterogeneous graphs, where each type of nodes can have its own feature distribution. 
+
+
+In view of this limitation, we design the \textbf{Heterogeneous Mutual Attention} mechanism. 
+% The basic idea is to use the \textbf{meta relation}, i.e., $\langle \tau(s), \phi(e), \tau(t) \rangle$ triplet,  to parametrize the weight matrices of interaction operator between a pair of nodes. In this way, different relationships' operators can share similar patterns while maintaining their specific characteristics, using equal or smaller parameters.
+Given a target node $t$, and all its neighbors $s \in N(t)$, which might belong to different distributions, we want to calculate their mutual attention grounded by their \textbf{meta relations}, i.e., the $\langle \tau(s), \phi(e), \tau(t) \rangle$ triplets. 
+
+Inspired by the architecture design of Transformer~\cite{DBLP:conf/nips/VaswaniSPUJGKP17}, we  map target node $t$ into a Query vector, and source node $s$ into a Key vector, and calculate their dot product as attention. The key difference is that the vanilla Transformer uses a single set of projections for all words, while in our case each meta relation should have a distinct set of projection weights. To maximize parameter sharing while still maintaining the specific characteristics of different relations, we propose to parameterize the weight matrices of the interaction operators into a source node projection, an edge projection, and a target node projection. Specifically, we calculate the $h$-head {attention} for each edge $e=(s,t)$ (See Figure \ref{fig:my_label} (1)) by:
+\begin{align}
+\label{eq:hgt-att}
+\textbf{Attention}_{HGT}(s,e,t)&  = \underset{\forall s \in N(t)}{\text{Softmax}}\Big(\underset{i \in [1,h]}{\mathlarger{\mathbin\Vert}}ATT\text{-}head^{i}(s,e,t)\Big)\\
+ATT\text{-}head^{i}(s,e,t)&  = \Big(K^i(s)\ W^{ATT}_{\phi(e)}\ Q^i(t)^T\Big) \cdot \frac{{\mu}_{\langle \tau(s), \phi(e), \tau(t) \rangle}}{\sqrt{d}} \nonumber\\
+K^i(s)&  = \text{K-Linear}^i_{\tau(s)}\Big({H}^{(l-1)}[s]\Big) \nonumber\\
+Q^i(t)&  = \text{Q-Linear}^i_{\tau(t)}\Big(H^{(l-1)}[t]\Big) \nonumber
+\end{align}
+First, for the $i$-th attention head $ATT\text{-}head^{i}(s,e,t)$, we project the $\tau(s)$-type source node $s$ into the $i$-th \textit{Key} vector $K^i(s)$ with a linear projection K-Linear$^i_{\tau(s)}: \RR^{d} \rightarrow \RR^{\frac{d}{h}}$, where $h$ is the number of attention heads and $\frac{d}{h}$ is the vector dimension per head. 
+Note that K-Linear$^i_{\tau(s)}$ is indexed by the source node $s$'s type $\tau(s)$, meaning that each type of nodes has a unique linear projection to maximally model the distribution differences. 
+Similarly, we also project the target node $t$ with a linear projection Q-Linear$^i_{\tau(t)}$ into the $i-$th Query vector. 
+
+% \yd{may need to briefly introduce the Transformer model with K, Q, V}
+
+Next, we need to calculate the similarity between the Query vector $Q^i(t)$ and Key vector $K^i(s)$. 
+One unique characteristic of heterogeneous graphs is that there may exist different edge types (relations) between a node type pair, e.g., $\tau(s)$ and $\tau(t)$. 
+Therefore, unlike the vanilla Transformer that directly calculates the dot product between the Query and Key vectors, we keep a distinct edge-based matrix $W^{ATT}_{\phi(e)}\in\RR^{\frac{d}{h}\times\frac{d}{h}}$ for each edge type $\phi(e)$. In doing so, the model can capture different semantic relations even between the same node type pairs. 
+Moreover, since not all the relationships contribute equally to the target nodes, 
+we add a prior tensor $\mu \in \RR^{|\cA|\times|\cR|\times|\cA|}$ to denote the general significance of each meta relation triplet, serving as an adaptive scaling to the attention. 
+
+Finally, we concatenate $h$ attention heads together to get the attention vector for each node pair. 
+Then, for each target node $t$, we gather all attention vectors from its neighbors $N(t)$ and conduct softmax, making it fulfill $\sum_{\forall s \in N(t)}\textbf{Attention}_{HGT}(s,e,t) = \mathbf{1}_{h \times 1}$.
+
+
+
+\subsection{Heterogeneous Message Passing}
+Parallel to the calculation of mutual attention, we pass information from source nodes to target nodes (See Figure \ref{fig:my_label} (2)). 
+Similar to the attention process, we would like to incorporate the meta relations of edges into the message passing process to alleviate the distribution differences of nodes and edges of different types. For a pair of nodes $e =(s,t)$, we calculate its multi-head \textbf{Message} by:
+\begin{align}
+\textbf{Message}_{HGT}(s,e,t)&  = \underset{i \in [1,h]}{\mathlarger{\mathbin\Vert}}MSG\text{-}head^{i}(s,e, t)\\
+MSG\text{-}head^{i}(s,e, t)&  = \text{M-Linear}^i_{\tau(s)}\Big({H}^{(l-1)}[s]\Big) \ W^{MSG}_{\phi(e)} \nonumber
+\end{align}
+To get the $i$-th message head $MSG\text{-}head^{i}(s,e,t)$, we first project the $\tau(s)$-type source node $s$ into the $i$-th message vector with a linear projection M-Linear$^i_{\tau(s)}: \RR^{d} \rightarrow \RR^{\frac{d}{h}}$. 
+It is then followed by a matrix $W^{MSG}_{\phi(e)}\in\RR^{\frac{d}{h}\times\frac{d}{h}}$ for incorporating the edge dependency. 
+The final step is to concat all $h$ message heads to get the  $\textbf{Message}_{HGT}(s,e, t)$ for each node pair.
+
+
+\subsection{Target-Specific Aggregation}
+With the heterogeneous multi-head attention and message calculated, we need to aggregate them from the source nodes to the target node (See Figure \ref{fig:my_label} (3)). 
+Note that the softmax procedure in Eq. \ref{eq:hgt-att} has made the sum of each target node $t$'s attention vectors to one, we can thus simply use the attention vector as the weight to average the corresponding messages from the source nodes and get the updated vector $\widetilde{H}^{(l)}[t]$ as:
+\begin{align}
+\widetilde{H}^{(l)}[t] &= \underset{\forall s \in N(t)}{\mathlarger{\oplus}}\Big(\textbf{Attention}_{HGT}(s, e, t) \cdot \textbf{Message}_{HGT}(s, e, t)\Big). \nonumber
+\end{align}
+This aggregates information to the target node $t$ from all its neighbors (source nodes) of different feature distributions. 
+
+The final step is to map target node $t$'s vector back to its type-specific distribution, indexed by its node type $\tau(t)$. 
+To do so, we apply a linear projection A-Linear$_{\tau(t)}$ to the updated vector $\widetilde{H}^{(l)}[t]$, followed by residual connection~\cite{DBLP:conf/cvpr/HeZRS16} as:
+\begin{align}
+&H^{(l)}[t] = % \underset{\forall v: \tau(v) = \tau(t)}{\text{BatchNorm}}\bigg(
+\text{A-Linear}_{\tau(t)}\Big(\sigma\big(\widetilde{H}^{(l)}[t]\big)\Big) + H^{(l-1)}[t]. \label{eq:output} 
+\end{align}
+In this way, we get the $l$-th \short\ layer's output $H^{(l)}[t]$ for the target node $t$. 
+Due to the ``small-world'' property of real-world graphs, stacking the \short\ blocks for $L$ layers ($L$ being a small value) can enable each node reaching  a large proportion of nodes---with different types and relations---in the full graph. 
+That is, \short\ generates a highly contextualized representation $H^{(L)}$ for each node, which can be fed into any models to conduct downstream heterogeneous network tasks, such as node classification and link prediction. 
+
+Through the whole model architecture, we highly rely on using the \textbf{meta relation}---$\langle \tau(s), \phi(e), \tau(t) \rangle$---to parameterize the weight matrices separately. 
+This can be interpreted as a trade-off between the model capacity and efficiency. Compared with the vanilla Transformer, our model distinguishes the operators for different relations and thus is more capable to handle the distribution differences in heterogeneous graphs. 
+Compared with existing models that keep a distinct matrix for each meta relation as a whole, \short's triplet parameterization can better leverage the heterogeneous graph schema to achieve parameter sharing. 
+On one hand, relations with few occurrences can benefit from such parameter sharing for fast adaptation and generalization. 
+On the other hand, different relationships' operators can still maintain their specific characteristics by using a much smaller parameter set. 
+
+
+
+
+
+
+\begin{figure}[t!]
+    \centering
+    \includegraphics[width=0.47\textwidth, trim = 10 0 10 0, clip
+    ]{picture/rte.png}
+    \caption{Relative Temporal Encoding (RTE) to model graph dynamic. \textmd{Nodes  are associated with timestamps $T(\cdot)$. After the RTE process, the temporal augmented representations are fed to the \short\ model.}}
+    \label{fig:rte}
+\end{figure} 
+
+
+
+\subsection{Relative Temporal Encoding}
+By far, we present \short---a graph neural network for modeling heterogeneous graphs. 
+Next, we introduce the Relative Temporal Encoding (RTE) technique for \short\ to handle graph dynamic. 
+
+
+The traditional way to incorporate temporal information is to construct a separate graph for each time slot. 
+However, such a procedure may lose a large portion of structural dependencies across different time slots. 
+Meanwhile, the representation of a node at time $t$ might rely on edges that happen at other time slots. 
+Therefore, %we claim that 
+a proper way to model dynamic graphs is to maintain all the edges happening at different times and allow nodes and edges with different timestamps to interact with each other.
+
+In light of this, we propose the Relative Temporal Encoding (RTE) mechanism to model the dynamic dependencies in heterogeneous graphs. 
+RTE is inspired by Transformer's positional encoding method~\cite{DBLP:conf/nips/VaswaniSPUJGKP17, DBLP:conf/naacl/ShawUV18}, which has been shown successful to capture the sequential dependencies of words in long texts. 
+
+Specifically, given a source node $s$ and a target node $t$, along with their corresponding timestamps $T(s)$ and $T(t)$, we denote the relative time gap $\Delta T(t,s) = T(t) - T(s)$ as an index to get a relative temporal encoding $RTE(\Delta T(t,s))$. 
+Noted that the training dataset will not cover all possible time gaps, and thus  $RTE$ should be capable of generalizing to unseen times and time gaps. 
+Therefore, we adopt a fixed set of sinusoid functions as basis, with a tunable linear projection T-Linear\footnote{For simplicity, we denote a linear projection L $:\RR^{a}\rightarrow \RR^{b}$ as a function to conduct linear transformation to vector $x\in\RR^{a}$ as: L$(x)=Wx+b$, where matrix $W\in\RR^{a+b}$ and bias $b\in\RR^{b}$. $W$ and $b$ are learnable parameters for L.}$: \RR^{d} \rightarrow \RR^{d}$ as $RTE$:
+\begin{align}
+   Base\big(\Delta T(t,s), 2i\big) & = sin\Big(\Delta T_{t,s} / 10000^{\frac{2i}{d}}\Big)\\ 
+   Base\big(\Delta T(t,s), 2i+1\big) & = cos\Big(\Delta T_{t,s} / 10000^{\frac{2i+1}{d}}\Big)\\ 
+   RTE\big(\Delta T(t,s)\big) & = \text{T-Linear}\Big( Base(\Delta T_{t,s}) \Big)
+\end{align}
+Finally, the temporal encoding relative to the target node $t$ is added to the source node $s$' representation as follows:
+\begin{align}
+    \widehat{H}^{(l-1)}[s] = H^{(l-1)}[s] + RTE\big(\Delta T(t,s)\big)
+\end{align}
+In this way, the temporal augmented representation $\widehat{H}^{(l-1)}$ will capture the relative temporal information of source node $s$ and target node $t$. The RTE procedure is illustrated in the Figure \ref{fig:rte}. 
+% \yd{may need to explain $\widehat{H}^{(l-1)}$ to data/web mining people }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\hide{
+\begin{figure*}[ht!]
+    \centering
+    \includegraphics[width=1.02\textwidth, trim = 10 0 150 0, clip]{picture/attention.png}
+    \caption{Overall Architecture of Heterogeneous Graph Transformer. Color denotes the representation or weights from a specific type of node, where blue means Paper, red means Author and orange means Venue. Given a pair of nodes, HGT (1) incorporates temporal information via relative temporal encoding; (2) calculates their mutual attention via meta relation defined weights; (3) calculates message from source side; (4) aggregates heterogeneous messages at target side.}
+    \label{fig:my_label}
+\end{figure*} 
+
+
+
+
+
+In this section, we present the \model\ (\short) architecture for modeling heterogeneous graphs with network dynamics. Its core idea is to use \textbf{meta relation} to parametrize weight matrices for the heterogeneous mutual attention, message passing, and propagation. 
+To incorporate network dynamics, we introduce a relative temporal encoding mechanism into the model. 
+
+
+\subsection{Overall \short\ Architecture}
+
+Figure~\ref{fig:my_label} shows the overall architecture of \model. Given a sampled heterogeneous graph (Cf. Section \ref{sec:train}), \short\ extracts all linked node pairs, where target node $t$ is linked by source node $s$ via edge $e$. The goal of \short\ is to aggregates information from $s$ to get a contextualized representation for target node $t$. Such process can be decomposed into four components: \textit{Relative Temporal Encoding, Heterogeneous Mutual Attention}, \textit{Heterogeneous Message Passing} and \textit{Target-Specific Aggregation}. 
+
+We denote the output of the $(l)$-th \short\ layer is $H^{(l)}$, which is also the input of the $(l$+$1)$-th layer. 
+By stacking $L$ layers, we can get the node representations of the whole graph $H^{(L)}$, which can be used for end-to-end training or fed into downstream tasks.  
+
+\subsection{Relative Temporal Encoding}
+
+To incorporate temporal information into the model, one naive way is to construct a separate graph for each time slot. However, such a procedure may lose a large portion of structural information across different time slots. 
+Meanwhile, the representation of a node at time $t$ might rely on edges that happened at other time slots. 
+Therefore, %we claim that 
+a proper way to model dynamic graphs is to maintain all the edges happening at different times and allow nodes and edges with different timestamps to interact with each other.
+
+In light of this, we present the Relative Temporal Encoding (RTE) mechanism to model the dynamic dependencies in heterogeneous graphs. 
+RTE is inspired by Transformer's positional encoding method~\cite{DBLP:conf/nips/VaswaniSPUJGKP17, DBLP:conf/naacl/ShawUV18}, which has been shown successful to capture the sequential dependency of words in long texts. 
+
+Given a source node $s$ and a target node $t$, along with their corresponding timestamps $T(s)$ and $T(t)$, we denote the relative time gap $\Delta T(t,s) = T(t) - T(s)$ as an index to get a relative temporal encoding $RTE(\Delta T(t,s))$. Noted that the training dataset will not cover all possible time gaps, and thus  $RTE$ should be capable of generalizing to unseen time. We thus adopt a fixed set of sinusoid functions as basis, with a tunable linear projection T-Linear\footnote{For simplicity, we denote a linear projection L $:\RR^{a}\rightarrow \RR^{b}$ as a function to conduct linear transformation to vector $x\in\RR^{a}$ as: L$(x)=Wx+b$, where matrix $W\in\RR^{a+b}$ and bias $b\in\RR^{b}$. $W$ and $b$ are learnable parameters for L.}$: \RR^{d} \rightarrow \RR^{d}$ as $RTE$:
+\begin{align}
+   Base\big(\Delta T(t,s), 2i\big) & = sin\Big(\Delta T_{t,s} / 10000^{\frac{2i}{d}}\Big)\\ 
+   Base\big(\Delta T(t,s), 2i+1\big) & = cos\Big(\Delta T_{t,s} / 10000^{\frac{2i+1}{d}}\Big)\\ 
+   RTE\big(\Delta T(t,s)\big) & = \text{T-Linear}\Big( Base(\Delta T_{t,s}) \Big)
+\end{align}
+Finally, the temporal encoding relative to the target node $t$ is added to the source node $s$' representation as follows:
+\begin{align}
+    \widehat{H}^{(l-1)}[s] = H^{(l-1)}[s] + RTE\big(\Delta T(t,s)\big)
+\end{align}
+In this way, the temporal augmented representation $\widehat{H}^{(l-1)}$ will capture the relative temporal information of source node $s$ and target node $t$. The whole procedure is illustrated in the Figure \ref{fig:my_label} (1). 
+% \yd{may need to explain $\widehat{H}^{(l-1)}$ to data/web mining people }
+
+
+\subsection{Heterogeneous Mutual Attention}
+
+The second step is to calculate mutual attention between source node $s$ and target node $t$. We first give a brief introduction to the general attention-based GNNs as follow: 
+\begin{align}
+H^{l}[t] \gets \underset{\forall s \in N(t), \forall e \in E(s,t)}{\textbf{Aggregate}}\Big(  \textbf{Attention}(s, t) \cdot \textbf{Message}(s)\Big)
+\end{align}
+Compared to the general GNN Framework, it implements the neighbor information extractor \textbf{Extract} by two major components: \textbf{Attention}, which estimates the importance of each source node, and \textbf{Message}, which extracts the message by using only the source node $s$.
+
+For example, the Graph Attention Network (GAT)~\cite{DBLP:conf/iclr/VelickovicCCRLB18} adopts an additive mechanism as \textbf{Attention}, uses the same weight for calculating \textbf{Message}, and leverages the simple average followed by a nonlinear activation for the \textbf{Aggregate} step. 
+Formally, GAT has
+\begin{align}
+    \textbf{Attention}_{GAT}(s, t) & = \underset{\forall s \in N(t)}{\text{Softmax}} \bigg(A \Big(WH^{l-1}[t] \mathbin\Vert WH^{l-1}[s]\Big)\bigg) \nonumber\\
+    \textbf{Message}_{GAT}(s)  & = WH^{l-1}[s] \nonumber\\ 
+    \textbf{Aggregate}_{GAT}(\cdot) & = \sigma \Big(\text{Mean}(\cdot)\Big) \nonumber
+\end{align}
+Though GAT is effective to give high attention values to important nodes, it assumes that $s$ and $t$ have the same feature distributions by using one weight matrix $W$. 
+Such an assumption, as we've discussed in Section~\ref{sec:introduction}, 
+is usually incorrect for heterogeneous graphs, where each type of nodes can have its own feature distribution. 
+
+
+In view of this limitation, we design a \textbf{Heterogeneous Mutual Attention} mechanism. 
+% The basic idea is to use the \textbf{meta relation}, i.e., $\langle \tau(s), \phi(e), \tau(t) \rangle$ triplet,  to parametrize the weight matrices of interaction operator between a pair of nodes. In this way, different relationships' operators can share similar patterns while maintaining their specific characteristics, using equal or smaller parameters.
+Given a target node $t$, and all its neighbors $s \in N(t)$, which might belong to different distributions, we want to calculate their mutual attention grounded by \textbf{meta relation}, i.e., the $\langle \tau(s), \phi(e), \tau(t) \rangle$ triplet. 
+
+Inspired by the architecture design of Transformer, we also map target node $t$ into a Query vector, and source node $s$ into a Key vector, and calculate their dot product as attention. The key difference is that the vanilla Transformer uses a single set of projection for all words, while in our case each meta relation should have a distinct set of projection weights. To maximize parameter sharing while still maintaining the specific characteristics of different relations, we propose to parametrize the weight matrices of interaction operator into a source node projection, an edge projection and a target node projection. Specifically, we calculate the $h$-head {Attention} from each source node $s$ to $t$ (See Figure \ref{fig:my_label} (2)) by:
+\begin{align}
+\label{eq:hgt-att}
+\textbf{Attention}_{HGT}(s,e,t)&  = \underset{\forall s \in N(t)}{\text{Softmax}}\Big(\underset{i \in [1,h]}{\mathlarger{\mathbin\Vert}}ATT\text{-}head^{i}(s,e,t)\Big)\\
+ATT\text{-}head^{i}(s,e,t)&  = \Big(K^i(s)\ W^{ATT}_{\phi(e)}\ Q^i(t)^T\Big) \cdot \frac{{\mu}_{\langle \tau(s), \phi(e), \tau(t) \rangle}}{\sqrt{d}} \nonumber\\
+K^i(s)&  = \text{K-Linear}^i_{\tau(s)}\Big(\widehat{H}^{(l-1)}[s]\Big) \nonumber\\
+Q^i(t)&  = \text{Q-Linear}^i_{\tau(t)}\Big(H^{(l-1)}[t]\Big) \nonumber
+\end{align}
+First, for the $i$-th attention head $ATT\text{-}head^{i}(s,e,t)$, we project the source node $s$ (node type $\tau(s)$) into the $i$-th \textit{Key} vector $K^i(s)$ with a linear projection K-Linear$^i_{\tau(s)}: \RR^{d} \rightarrow \RR^{\frac{d}{h}}$ , where $h$ is the number of attention heads and $\frac{d}{h}$ is the vector dimension per head. 
+Note that K-Linear$^i_{\tau(s)}$ is indexed by the source node $s$'s type $\tau(s)$, meaning that each type of nodes has a unique linear projection to maximally model the distribution differences. 
+Similarly, we also project the target node $t$ with a linear projection Q-Linear$^i_{\tau(t)}$ into the $i-$th Query vector. 
+
+% \yd{may need to briefly introduce the Transformer model with K, Q, V}
+
+Next, we need to calculate the similarity between the Query vector $Q^i(t)$ and Key vector $K^i(s)$. 
+One unique characteristic of heterogeneous graphs is that there may have different edge types (relations) between a node type pair (e.g., $\tau(s)$ and $\tau(t)$). 
+Therefore, unlike the vanilla Transformer that directly calculates the dot product between the Query and Key vectors, we keep a distinct edge-based matrix $W^{ATT}_{\phi(e)}\in\RR^{\frac{d}{h}\times\frac{d}{h}}$ for each edge type $\phi(e)$. In doing so, the model can capture different semantic relations even between the same node type pairs. 
+Moreover, since not all the relationships contribute equally to the target nodes, 
+we add a prior tensor $\mu \in \RR^{|\cA|\times|\cR|\times|\cA|}$ to denote the general significance of each meta relation triplet, serving as an adaptive scaling to the attention. 
+
+Finally, we concatenate $h$ attention heads together to get the attention vector for each node pair. 
+Then, for each target node $t$, we gather all attention vectors from its neighbors $N(t)$ and conduct softmax, making it fulfill $\sum_{\forall s \in N(t)}\textbf{Attention}_{HGT}(s,e,t) = \mathbf{1}_{h \times 1}$.
+
+
+
+\subsection{Heterogeneous Message Passing}
+Parallel to the calculation of mutual attention, we pass information from source nodes to target nodes (See Figure \ref{fig:my_label} (3)). 
+Similar to the attention process, we would like to incorporate meta relation into the message passing process to alleviate the distribution differences of nodes and edges of different types. For a pair of nodes $e =(s,t)$, we calculate its multi-head \textbf{Message} by:
+\begin{align}
+\textbf{Message}_{HGT}(s,e,t)&  = \underset{i \in [1,h]}{\mathlarger{\mathbin\Vert}}MSG\text{-}head^{i}(s,e, t)\\
+MSG\text{-}head^{i}(s,e, t)&  = \text{M-Linear}^i_{\tau(s)}\Big(\widehat{H}^{(l-1)}[s]\Big) \ W^{MSG}_{\phi(e)} \nonumber
+\end{align}
+To get the $i$-th message head $MSG\text{-}head^{i}(s,e,t)$, we first project the source node $s$ of the node type $\tau(s)$ into the $i$-th message vector with a linear projection M-Linear$^i_{\tau(s)}: \RR^{d} \rightarrow \RR^{\frac{d}{h}}$. 
+It is then followed by a matrix $W^{MSG}_{\phi(e)}\in\RR^{\frac{d}{h}\times\frac{d}{h}}$ for incorporating the edge dependency. 
+The final step is to concat all $h$ message heads to get the  $\textbf{Message}_{HGT}(s,e, t)$ for each node pair.
+
+
+\subsection{Target-Specific Aggregation}
+With the heterogeneous multi-head attention and message calculated, we need to aggregate them from the source nodes to the target node (See Figure \ref{fig:my_label} (4)). 
+Note that the softmax procedure in Eq. \ref{eq:hgt-att} has made the sum of each target node $t$'s attention vectors to one, we can thus simply use the attention vector as weight to average the corresponding messages from the source nodes and get the updated vector $\widetilde{H}^{(l)}[t]$ as:
+\begin{align}
+\label{eq:agg}
+\widetilde{H}^{(l)}[t] &= \underset{\forall s \in N(t)}{\mathlarger{\oplus}}\Big(\textbf{Attention}_{HGT}(s, e, t) \cdot \textbf{Message}_{HGT}(s, e, t)\Big)
+\end{align}
+
+Eq. \ref{eq:agg} aggregates information to the target node $t$ from all its neighbors (source nodes) of different feature distributions. 
+
+The final step is to map $t$'s vector back to its type-specific distribution, indexed by its node type $\tau(t)$. 
+To do so, we apply a linear projection A-Linear$_{\tau(t)}$ to the updated vector $\widetilde{H}^{(l)}[t]$, followed by a non-linear activation (Eq. \ref{eq:output}). Specifically, we have: 
+\begin{align}
+&H^{(l)}[t] =  \sigma\Big(\text{A-Linear}_{\tau(t)}\widetilde{H}^{(l)}[t]\Big)
+ + H^{(l-1)}[t] \label{eq:output}
+\end{align}
+
+% \begin{align}
+% H^{(l)}[t] &=  \underset{\forall v: \tau(v) = \tau(t)}{\text{BatchNorm}}\bigg(\sigma\Big(\text{A-Linear}_{\tau(t)}\widetilde{H}^{(l)}[t]\Big)
+%  + H^{(l-1)}[t]\bigg)
+% \end{align}
+
+In this way, we get the $l$-th \short\ layer's output $H^{(l)}[t]$ for the target node $t$. 
+Due to the ``small-world'' property of real-world graphs, stacking the \short\ blocks for multiple layers can enable each node reaching to a large proportion of nodes---with different types and relations---in the full graph. 
+In other words, \short\ generates a highly contextualized representation $H^{(L)}$ for each node, which can be fed into any models to conduct downstream heterogeneous network tasks, such as node classification and link prediction. 
+
+Through the whole model architecture, we highly rely on using the \textbf{meta relation}---$\langle \tau(s), \phi(e), \tau(t) \rangle$---to parametrize weight matrices. This can be interpreted as a tradeoff between model capacity and efficiency. Compared with the vanilla Transformer, our model distinguishes the operators for different relations and thus is more capable to handle the distribution differences in heterogeneous graphs. 
+Compared with existing models that keep a distinct matrix for each relation, \short's triple parameterization can better leverage the heterogeneous graph schema to achieve parameter sharing. On one hand, relations with few occurrences can benefit from such parameter sharing for fast adaptation and generalization. One the other hand, different relationships' operators can still maintain their specific characteristics, using much smaller parameters. 
+
+}%end of hide (www submission original)
+
+ 
+% \hide{
+
+% In this section, we discuss our proposed heterogeneous graph transformer architecture, which can leverage the complex heterogeneous information as well as the dynamic temporal information. We firstly introduce how we calculate mutual attention and propagate information between a particular type of node pair, then we introduce a relative temporal encoding mechanism to incorporate temporal information.
+% \subsection{Overall Architecture}
+% As is shown in Figure~\ref{fig:my_label}, our Heterogenerous Graph Transformer (HGT) has five basic components. The first component is to sample a subgraph from a web-scale Dataset. The sampled graph is fed into our HGT model, which consists of $L$ HGT layers. For each layer, each node aggregates information from only its neighbors that have direct link to it. Such process is decomposed into four components, Relative Temporal Encoding, Heterogeneous Mutual Attention, Heterogeneous Message Passing and Target-Specific Aggregation. We denote the output of the $l$-th layer HGT is $H^{(l)}$, which is also the input of $l+1$-th layer HGT. Thus, by stacking $L$ HGT layers, we get the node representations of the whole graph $H^{(L)}$, which can be fed into any downstream tasks, and be trained end-to-end. 
+
+% \begin{figure*}
+%     \centering
+%     \includegraphics[width=0.9\textwidth]{picture/attention.png}
+%     \caption{General Architecture of Heterogeneous Graph Transformer}
+%     \label{fig:my_label}
+% \end{figure*}
+
+% We first describe our HGT model, then describe how we construct sub-graph that can fulfill the requirements of model design. For simplicity, we assume a target node $t$ is updated at $l$-th layer HGT, and its representation before $l$-th HGT layer is $H^{(l-1)}[t]$ with dimension $d$, and $H^{(0)}[i]$ is its initial input feature. 
+
+% \subsection{Relative Temporal Encoding}
+
+% Since we keep all the edges happened in different years into a single graph, we need to design proper mechanism to maintain relative temporal dependency. Motivated by the positional encoding used in Transformer~\cite{DBLP:conf/nips/VaswaniSPUJGKP17, DBLP:conf/naacl/ShawUV18}, we propose to use Relative Temporal Encoding to model temporal dependency.
+
+% For target node $t$ and a source node $s$, with corresponding timestamps $T(t)$ and $T(s)$, their relative time gap is $\Delta T(t,s) = T(t) - T(s)$. We then use this time gap as index to get a relative temporal representation $RTE(\Delta T(t,s))$. Note that the training dataset cannot cover all possible time gap. For example, Given a training dataset from 2000-2010, and a node in 2020, the time gap from 2020 to 2000 is not appeared in the training dataset. Therefore, we need to design $RTE$ so that it can generalize to unseen time. To do so, we adopt the sinusoid function as basis with a linear projection\footnote{For simplicity, we denote a linear projection L $:\RR^{a}\rightarrow \RR^{b}$ as a function to conduct linear transformation to vector $x\in\RR^{a}$ as: L$(x)=Wx+b$, where matrix $W\in\RR^{a+b}$ and bias $b\in\RR^{b}$. $W$ and $b$ are learnable parameters for L.} T-Linear$: \RR^{d} \rightarrow \RR^{d}$ as $RTE$:
+% \begin{align}
+%   Base\big(\Delta T(t,s), 2i\big) & = sin\Big(\Delta T_{t,s} / 10000^{\frac{2i}{d}}\Big)\\ 
+%   Base\big(\Delta T(t,s), 2i+1\big) & = cos\Big(\Delta T_{t,s} / 10000^{\frac{2i+1}{d}}\Big)\\ 
+%   RTE\big(\Delta T(t,s)\big) & = \text{T-Linear}\Big( Base(\Delta T_{t,s}) \Big)
+% \end{align}
+% Finally we add temporal encoding to the representation of source node $j$ as follow:
+% \begin{align}
+%     \widehat{H}^{(l-1)}[s] = H^{(l-1)}[s] + RTE\big(\Delta T(t,s)\big)
+% \end{align}
+
+
+
+% \subsection{General Attention-based GNN Framework}
+% A general attention-based GNN framework is as follow:
+% \begin{align}
+% H^{l}[t] = \underset{\forall s \in N(t), e \in E(t,s)}{\textbf{Aggregate}}\Big(  \textbf{Attention}(s, e, t) \cdot \textbf{Message}(s, e)\Big)
+% \end{align}
+% The three major components of such framework is to calculate mutual attention, to pass message and to aggregate. We first describe how we design attention for heterogeneous graphs.
+
+% For example, Graph Attention Network (GAT)~\cite{DBLP:conf/iclr/VelickovicCCRLB18} adopts an additive attention mechanism as \textbf{Attention}, using the same weight for calculating \textbf{Message}, and adopt simple average followed by for nonlinear activation for \textbf{Aggregate}:
+% \begin{align}
+%     \textbf{Attention}_{GAT}(s, t) = \underset{\forall s \in N(t)}{\text{Softmax}} \bigg(A \Big(WH^{l-1}[t] \mathbin\Vert WH^{l-1}[s]\Big)\bigg)\\
+%     \textbf{Message}_{GAT}(s) = WH^{l-1}[s], \ \textbf{Aggregate}(\cdot) = \sigma \Big(\text{Mean}(\cdot)\Big)
+% \end{align}
+% Though GAT is effective to give high attention value to those important nodes, it assumes that $i$ and $j$ have the same feature distribution, so use the same matrix $W$ to express them. Such assumption, as we've discussed in the introduction, is not always correct for heterogeneous graphs, where each type of nodes can have their own feature distribution. Therefore, we design a Heterogeneous Mutual Attention. The basic idea is that we want to maintain different weight matrices for each node and relation type.
+
+
+
+% \subsection{Heterogeneous Mutual Attention}
+% For a pair of node $(s,t)$ linked by $e$, with source node type $\tau(s)$, target node type $\tau(t)$ and edge type $\phi(e)$, we calculate its multi-head \textbf{Attention} by:
+% \begin{align}\textbf{Attention}_{HGT}(s,e,t)&  = \underset{\forall s \in N(t)}{\text{Softmax}}\Big(\underset{i \in [1,h]}{\mathlarger{\mathbin\Vert}}ATT\text{-}head^{i}(s,e,t)\Big)\\
+% ATT\text{-}head^{i}(s,e,t)&  = \Big(K^i(s)\ W^{ATT}_{\phi(e)}\ Q^i(t)^T\Big) \cdot \frac{{\mu}_{\phi(e)}}{\sqrt{d}}\\
+% K^i(s)&  = \text{K-Linear}^i_{\tau(s)}\Big(\widehat{H}^{(l-1)}[s]\Big)\\
+% Q^i(t)&  = \text{Q-Linear}^i_{\tau(t)}\Big(H^{(l-1)}[t]\Big)
+% \end{align}
+% To get $i$-th attention head, i.e., $ATT\text{-}head^{i}(s,e,t)$, we first project source node $s$ in node type $\tau(s)$ with a linear projection K-Linear$^i_{\tau(s)}: \RR^{d} \rightarrow \RR^{\frac{d}{h}}$ into $i-$th Key vector, where $h$ is the number of attention heads, $\frac{d}{h}$ is the vector dimension per head. Note that K-Linear$^i_{\tau(s)}$ is indexed by source node's type $\tau(s)$, meaning that each type of nodes have different linear projection to maximally model the distribution difference. Similarly, we project target node $t$ with a linear projection Q-Linear$^i_{\tau(t)}$ into $i-$th Query vector. 
+
+% After getting the Query and Key vector, we'd like to calculate their similarity. Note that even if the node type pairs are the same, we can still have different edge type. For example, the paper and author node can have first-author, last-author and other relationships. Therefore, unlike vanilla Transformer that directly calculates the dot product between Query and Key vector, here we keep a edge-based matrix $W^{ATT}_{\phi(e)}\in\RR^{\frac{d}{h}\times\frac{d}{h}}$ for each edge type $\phi(e)$, so that the model can have different interaction for different relation. Moreover, we know that not all the relationships contribute equally to the target nodes. For example, first and last authors are more significant than other-authors to determine the property of a paper. Thus we add a prior tensor $\mu \in \RR^{|\cA|\times|\cR|\times|\cA|}$ to denote the general significance of each meta relation type, which serves as an adaptive scaling to the attention. We then concat all $h$ attention heads together to get attention vector for each node pairs. Finally, for each target node $t$, we gather all attention vectors and conduct softmax to them, so that it fultills $\sum_{\forall s \in N(t)}\textbf{Attention}_{HGT}(s,e,t) = \mathbf{1}_{h \times 1}$.
+
+
+
+% \subsection{Heterogeneous Message Passing}
+% Parallel to the calculation of mutual attention, we pass information from source nodes to target nodes. Similar to the previous process, we'd like to incorporate the node and edge type information into the message passing to alleviate distribution difference of nodes in different types. For a pair of nodes $(s,t)$ linked by $e$, we calculate its multi-head \textbf{Message} by:
+% \begin{align}
+% \textbf{Message}_{HGT}(s,e)&  = \underset{i \in [1,h]}{\mathlarger{\mathbin\Vert}}msg\text{-}head^{i}(s,e)\\
+% MSG\text{-}head^{i}(s,e)&  = \text{M-Linear}^i_{\tau(s)}\Big(\widehat{H}^{(l-1)}[s]\Big) \ W^{MSG}_{\phi(e)}
+% \end{align}
+% To get $i$-th message head, i.e., $MSG\text{-}head^{i}(s,e,t)$, we first project source node $s$ in node type $\tau(s)$ with a linear projection M-Linear$^i_{\tau(s)}: \RR^{d} \rightarrow \RR^{\frac{d}{h}}$ into $i-$th message vector, followed by a matrix $W^{MSG}_{\phi(e)}\in\RR^{\frac{d}{h}\times\frac{d}{h}}$ to incorporate edge dependency. We then concat all h message heads to get the final $\textbf{Message}_{HGT}(s,e)$ for each node pair.
+
+% \subsection{Aggregation}
+% After we get the multi-head attention and message for each node pair, we then need to aggregate the source information for each target node $t$. Noted that the softmax procedure has made the sum of attention vector for each target node $t$ as one, we can simply use the attention vector to weight average the corresponding message and get the updated vector $\widetilde{H}^{(l)}[t]$ by:
+% \begin{align}
+% \widetilde{H}^{(l)}[t] &= \underset{\forall s \in N(t)}{\mathlarger{\oplus}}\Big(\textbf{Attention}(s, e, t) \cdot \textbf{Message}(s, e)\Big)
+% \end{align}
+% After all these process, we've gathered information from all the neighbors of node $t$ that are within different feature distribution. The final step is to map this vector back to node $t$'s specific distribution, indexed by its node type $\tau(t)$. To do so, we apply a linear projection A-Linear$_{\tau(t)}$ to the updated vector $\widetilde{H}^{(l)}[t]$, followed by non-linear activation. To make the loss surface smooth for optimizing deep networks~\cite{DBLP:conf/nips/Li0TSG18}, we apply a residual (skip) connection~\cite{DBLP:conf/cvpr/HeZRS16} to allow previous layer's output. 
+
+% As is pointed out by Li \textit{et al.}~\cite{DBLP:conf/aaai/LiHW18}, applying multiple layer of GNNs is prone to make the node representations collapse to similar value, which is called by over-smoothing problem. To tackle such problem, we find that it's beneficial to add BatchNorm to re-scale the node representation distribution. Still, as we assume each type of nodes have their own distribution, we keep a different BatchNorm for each node type $\tau(t)$, so as to avoid over-smoothing problem and learn type specific representation.
+% \begin{align}
+% H^{(l)}[t] &=  \underset{\forall v: \tau(v) = \tau(t)}{\text{BatchNorm}}\bigg(\sigma\Big(\text{A-Linear}_{\tau(t)}\widetilde{H}^{(l)}[t]\Big)
+%  + H^{(l-1)}[t]\bigg)\\
+% \underset{\forall x \in X}{\text{BatchNorm}} = \gamma \cdot \frac{X - \mu_{X}}{\sqrt{\sigma_{X}^2 + \epsilon}} + \kappa \ \ \ \ \mbox{where} \ \ \ \ \mu_{X} = \frac{1}{|X|} \sum_{x \in X} x \ and \ \sigma_{X}^2 = \frac{1}{|X|} \sum_{x \in X} (x-\mu_{X})^2
+% \end{align}
+% In this way, we get the $l$-the HGT layer's output $H^{(l)}[t]$ for target node $t$. By stacking the HGT blocks for multiple layers, each node can reach to a wide range of nodes in the whole graph with all kinds of node and edge types, and finally getting a highly contextualized representation $H^{(L)}[t]$, which can be fed into any models to conduct downsteam-tasks, such as node, link and graph classification.
+
+
+% }%end of hide

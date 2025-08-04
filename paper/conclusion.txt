@@ -1,0 +1,19 @@
+
+% \yd{zn: plz re-phrase some sentences if having time---too similar to abstract}
+% \yd{zn: plz also add a small para to talk about two/three future points: such as pre-train ?}
+
+In this paper, we propose the \model\ (\short) architecture for modeling Web-scale heterogeneous and dynamic graphs. 
+To model heterogeneity, we use the meta relation $\langle \tau(s), \phi(e), \tau(t) \rangle$ to decompose the interaction and transform matrices, enabling the model to have the similar modeling capacity with fewer resources.
+To capture graph dynamics, we present %the \dynamic\ model. 
+%\dynamic\ %keeps the whole graph with each edge/node associated with its timestamp to avoid information loss, and then 
+%leverages 
+the relative temporal encoding  (RTE) technique to incorporate temporal information using limited computational resources. 
+To conduct efficient and scalable training of \short\ on Web-scale data, we design the heterogeneous Mini-Batch graph sampling algorithm---\sampling. 
+We conduct comprehensive experiments on the Open Academic Graph, and show that the proposed \short\ model can capture both heterogeneity and outperforms all the state-of-the-art GNN baselines on various downstream tasks.
+
+In the future, we will explore whether \short\ is able to generate heterogeneous graphs, e.g., predict new papers and their titles, and whether we can pre-train \short\ to benefit tasks with scarce labels.
+
+
+\vpara{Acknowledgements.} We would like to thank Xiaodong Liu for helpful discussions. This work is partially supported by NSF III-1705169, NSF CAREER Award 1741634, NSF\#1937599, Okawa Foundation Grant, and Amazon Research Award. 
+
+ 
